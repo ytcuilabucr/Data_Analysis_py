@@ -6,6 +6,6 @@ Workflow: preview/import selected columns → inspect immutable raw data → opt
 
 Architecture: `core.py` owns numeric datasets, imports, fit models, and CSV exports without Qt; `project.py` owns versioned JSON persistence and validation; `ui.py` owns Qt widgets and Matplotlib presentation. Fitting runs in a worker thread. JSON stores all data, provenance, fits, and plot settings, with atomic replacement on save. No pickle or external data references required to reopen.
 
-Raw source text and all parsed original columns are retained even when only a subset is selected. Derived copies record edits and invalidate their fit. Missing cells are NaN in memory and null in project JSON. Invalid numeric tokens and malformed rows fail import with row/column context. No implicit sorting or mutation of stored data.
+Raw source text, including unselected columns, is retained even when only a subset is parsed as numeric data. Derived copies record edits and invalidate their fit. Missing cells are NaN in memory and null in project JSON. Invalid numeric tokens and malformed rows fail import with row/column context. No implicit sorting or mutation of stored data.
 
 Deferred: scripting, plugins, signal processing, specialized formats, weighted fits, multiple plot windows, huge/out-of-core tables, undo/redo, packaging into installers.
