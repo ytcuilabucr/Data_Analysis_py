@@ -592,6 +592,20 @@ class FitWorker(C.QThread):
 class MainWindow(W.QMainWindow):
     def __init__(self):
         super().__init__()
+        self._build_state()
+        self._build_menus()
+        splitter = W.QSplitter()
+        self.setCentralWidget(splitter)
+        self._build_browser(splitter)
+        self._build_center(splitter)
+        layout = self._build_analysis_container(splitter)
+        self._build_channels(layout)
+        self._build_plot_controls(layout)
+        self._build_statistics(layout)
+        self._build_fitting(layout)
+        self._build_connections()
+
+    def _build_state(self):
         self.datasets = []
         self.path = None
         self.preferences = project_preferences()
@@ -615,6 +629,8 @@ class MainWindow(W.QMainWindow):
         self.setWindowTitle("Rogi — Scientific Analysis")
         self.resize(1280, 850)
         self.history = G.QUndoStack(self)
+
+    def _build_menus(self):
         self.file_menu = self.menuBar().addMenu("File")
         self.edit_menu = self.menuBar().addMenu("Edit")
         self.undo_action = self.history.createUndoAction(self, "Undo")
@@ -660,8 +676,8 @@ class MainWindow(W.QMainWindow):
                 action.setVisible(False)
         self.recent_menu = self.file_menu.addMenu("Recent projects")
         self.refresh_recent_projects()
-        splitter = W.QSplitter()
-        self.setCentralWidget(splitter)
+
+    def _build_browser(self, splitter):
         self.browser = DatasetBrowser()
         self.browser.setMinimumWidth(480)
         self.browser.setSelectionMode(W.QAbstractItemView.SelectionMode.ExtendedSelection)
@@ -727,6 +743,8 @@ class MainWindow(W.QMainWindow):
         self.search.textChanged.connect(self.filter_browser)
         self.group_filter.currentIndexChanged.connect(self.filter_browser)
         self.browser.itemSelectionChanged.connect(self.selection_changed)
+
+    def _build_center(self, splitter):
         center = W.QSplitter(C.Qt.Orientation.Vertical)
         splitter.addWidget(center)
         plot_widget = W.QWidget()
@@ -764,6 +782,8 @@ class MainWindow(W.QMainWindow):
         center.addWidget(self.table)
         self.image_viewer.show_table.toggled.connect(self.update_table_visibility)
         center.setSizes([580, 220])
+
+    def _build_analysis_container(self, splitter):
         panel = W.QWidget()
         layout = W.QVBoxLayout(panel)
         panel_scroll = W.QScrollArea()
@@ -774,6 +794,9 @@ class MainWindow(W.QMainWindow):
         panel_scroll.setMaximumWidth(400)
         splitter.addWidget(panel_scroll)
         splitter.setSizes([420, 680, 380])
+        return layout
+
+    def _build_channels(self, layout):
         self.info = W.QLabel("Import a CSV, TSV, TXT, or DAT file to begin.")
         self.info.setWordWrap(True)
         channels = W.QGroupBox("Axis channels — active dataset")
@@ -820,6 +843,8 @@ class MainWindow(W.QMainWindow):
                               ("Plot title", self.title), ("X label", self.xlabel), ("Y label", self.ylabel)]:
             form.addRow(label, widget)
         layout.addLayout(form)
+
+    def _build_plot_controls(self, layout):
         self.plot_panel = W.QWidget()
         controls = W.QFormLayout(self.plot_panel)
         controls.setContentsMargins(0, 0, 0, 0)
@@ -879,6 +904,8 @@ class MainWindow(W.QMainWindow):
         hint = W.QLabel("Changing channels for a hidden dataset shows it alone. Check datasets to compare curves.")
         hint.setWordWrap(True)
         layout.addWidget(hint)
+
+    def _build_statistics(self, layout):
         self.stats_panel = W.QGroupBox("Statistics — active dataset Y")
         stats_layout = W.QFormLayout(self.stats_panel)
         self.stats_mode = W.QComboBox()
@@ -908,6 +935,8 @@ class MainWindow(W.QMainWindow):
         self.stats_drag.toggled.connect(self.toggle_statistics_drag)
         for field in self.stats_bounds[2:]:
             field.setEnabled(False)
+
+    def _build_fitting(self, layout):
         self.fit_panel = W.QWidget()
         fit_layout = W.QVBoxLayout(self.fit_panel)
         fit_layout.setContentsMargins(0, 0, 0, 0)
@@ -934,6 +963,8 @@ class MainWindow(W.QMainWindow):
         self.result.setReadOnly(True)
         fit_layout.addWidget(self.result)
         self.show_fitting.toggled.connect(self.toggle_fitting)
+
+    def _build_connections(self):
         self.browser.currentRowChanged.connect(self.select)
         self.browser.itemChanged.connect(lambda item, column: self.visibility(item) if column == 0 else None)
         for combo in (self.x, self.y, self.style):
