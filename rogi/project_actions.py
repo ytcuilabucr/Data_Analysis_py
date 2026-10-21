@@ -72,7 +72,7 @@ def changed(self):
 
 
 def import_file(self):
-    from .ui import ImportDialog, SpmImportDialog, ImportGroupDialog
+    from .dialogs import ImportDialog, SpmImportDialog, ImportGroupDialog
     path, _ = W.QFileDialog.getOpenFileName(self, "Import numeric data", "", "Supported data (*.csv *.tsv *.txt *.dat *.spm *.sxm);;SPM scans and curves (*.spm *.sxm);;Text data (*.csv *.tsv *.txt *.dat);;All files (*)")
     if path:
         if Path(path).suffix.lower() in ('.spm', '.sxm'):
