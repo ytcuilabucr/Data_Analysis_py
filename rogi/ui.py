@@ -19,6 +19,7 @@ from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
 from matplotlib.widgets import SpanSelector, Cursor, RectangleSelector
 from .browser_panel import BrowserPanel, BrowserState, BrowserItem, DatasetBrowser, populate_group_tree
 from .plot_controls_panel import PlotControlsPanel
+from .fitting_panel import FittingPanel, FitWorker
 from .history import ChangeCommand, CellCommand, CellsCommand
 from .grouping import group_path, path_key, path_label, node_label, partitions, varying_fields, field_labels, import_destinations
 from .spm import load_spm
@@ -457,19 +458,6 @@ class MetadataDialog(W.QDialog):
         layout.addWidget(buttons)
 
 
-class FitWorker(C.QThread):
-    result = C.Signal(object, object)
-    failed = C.Signal(str)
-
-    def __init__(self, dataset, model, lower, upper, exclude, parent=None):
-        super().__init__(parent)
-        self.dataset, self.args = dataset, (model, lower, upper, exclude)
-
-    def run(self):
-        try:
-            self.result.emit(self.dataset, fit_dataset(self.dataset, *self.args))
-        except Exception as error:
-            self.failed.emit(str(error))
 
 
 class MainWindow(W.QMainWindow):
@@ -717,32 +705,19 @@ class MainWindow(W.QMainWindow):
             field.setEnabled(False)
 
     def _build_fitting(self, layout):
-        self.fit_panel = W.QWidget()
-        fit_layout = W.QVBoxLayout(self.fit_panel)
-        fit_layout.setContentsMargins(0, 0, 0, 0)
+        self.fit_panel = FittingPanel()
         layout.addWidget(self.fit_panel)
         layout.addStretch()
-        self.fit_panel.hide()
-        self.model = W.QComboBox()
-        self.model.addItems(['Linear', 'Gaussian'])
-        self.lower, self.upper = W.QLineEdit(), W.QLineEdit()
-        fitform = W.QFormLayout()
-        fitform.addRow("Model", self.model)
-        fitform.addRow("Range minimum", self.lower)
-        fitform.addRow("Range maximum", self.upper)
-        fit_layout.addLayout(fitform)
-        self.drag = W.QCheckBox("Drag to select range (disable pan/zoom)")
-        self.drag.toggled.connect(self.toggle_span)
-        fit_layout.addWidget(self.drag)
-        self.exclude = W.QCheckBox("Exclude rows with missing X/Y")
-        fit_layout.addWidget(self.exclude)
-        self.fitbutton = W.QPushButton("Fit selected dataset")
-        self.fitbutton.clicked.connect(lambda: self.guard(self.start_fit))
-        fit_layout.addWidget(self.fitbutton)
-        self.result = W.QPlainTextEdit()
-        self.result.setReadOnly(True)
-        fit_layout.addWidget(self.result)
+        self.fit_panel.drag_changed.connect(self.toggle_span)
+        self.fit_panel.fit_requested.connect(lambda: self.guard(self.start_fit))
         self.show_fitting.toggled.connect(self.toggle_fitting)
+        self.model = self.fit_panel.model
+        self.lower = self.fit_panel.lower
+        self.upper = self.fit_panel.upper
+        self.drag = self.fit_panel.drag
+        self.exclude = self.fit_panel.exclude
+        self.fitbutton = self.fit_panel.fitbutton
+        self.result = self.fit_panel.result
 
     def _build_connections(self):
         self.browser.currentRowChanged.connect(self.select)
@@ -1375,18 +1350,7 @@ class MainWindow(W.QMainWindow):
         self.redraw()
 
     def reset_fit_range(self, dataset, restore_fit=False):
-        finite_x = dataset.values[:, dataset.xcol]
-        finite_x = finite_x[np.isfinite(finite_x)]
-        if restore_fit and dataset.fit and dataset.fit['xcol'] == dataset.xcol:
-            lower, upper = dataset.fit['lower'], dataset.fit['upper']
-        elif finite_x.size:
-            lower, upper = np.min(finite_x), np.max(finite_x)
-        else:
-            self.lower.clear()
-            self.upper.clear()
-            return
-        self.lower.setText(str(lower))
-        self.upper.setText(str(upper))
+        return self.fit_panel.reset_fit_range(dataset, restore_fit)
 
     def labels_changed(self):
         self.panels[self.active_panel]['ylabel'] = self.ylabel.text()
@@ -1409,9 +1373,7 @@ class MainWindow(W.QMainWindow):
             self.span.set_active(active)
 
     def range_selected(self, lower, upper):
-        if lower < upper:
-            self.lower.setText(f"{lower:.12g}")
-            self.upper.setText(f"{upper:.12g}")
+        return self.fit_panel.range_selected(lower, upper)
 
     def disable_navigation(self):
         if self.navigation.mode == 'pan/zoom':
@@ -1762,19 +1724,7 @@ class MainWindow(W.QMainWindow):
         self.canvas.draw_idle()
 
     def show_result(self):
-        d = self.current()
-        if not d or not d.fit:
-            self.result.setPlainText("No fit. Linear: y = slope*x + intercept\n\nGaussian: y = baseline + amplitude*exp(-0.5*((x-center)/sigma)^2)\n\nUnweighted least squares; uncertainties assume independent, equal-variance Y errors and exact X. See README.")
-            return
-        f = d.fit
-        lines = [f"{f['model']} — revision {f['revision']}", f"X: {d.columns[f['xcol']]} / Y: {d.columns[f['ycol']]}", f"Range: [{f['lower']:g}, {f['upper']:g}]", f"Points: {len(f['x'])}; missing excluded: {f['excluded_missing']}"]
-        for name, value in f['parameters'].items():
-            error = f['errors'][name]
-            lines.append(f"{name} = {value:.8g} ± {error:.4g}" if error is not None else f"{name} = {value:.8g} (uncertainty unavailable)")
-        lines += [f"RMSE: {f['rmse']:.6g}; dof: {f['dof']}", "± denotes approximate 1σ standard errors.", f['warning']]
-        if (f['xcol'], f['ycol']) != (d.xcol, d.ycol):
-            lines.append("Fit uses other columns; its curve is hidden.")
-        self.result.setPlainText('\n'.join(lines))
+        return self.fit_panel.show_result(self.current())
 
     def start_fit(self):
         channels = self.panels[self.active_panel]['channels']
