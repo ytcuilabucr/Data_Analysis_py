@@ -18,6 +18,7 @@ from matplotlib.transforms import Bbox
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
 from matplotlib.widgets import SpanSelector, Cursor, RectangleSelector
 from .browser_panel import BrowserPanel, BrowserState, BrowserItem, DatasetBrowser, populate_group_tree
+from .plot_controls_panel import PlotControlsPanel
 from .history import ChangeCommand, CellCommand, CellsCommand
 from .grouping import group_path, path_key, path_label, node_label, partitions, varying_fields, field_labels, import_destinations
 from .spm import load_spm
@@ -648,113 +649,41 @@ class MainWindow(W.QMainWindow):
         return layout
 
     def _build_channels(self, layout):
-        self.info = W.QLabel("Import a CSV, TSV, TXT, or DAT file to begin.")
-        self.info.setWordWrap(True)
-        channels = W.QGroupBox("Axis channels — active dataset")
-        channel_form = W.QFormLayout(channels)
-        channel_form.setRowWrapPolicy(W.QFormLayout.RowWrapPolicy.WrapLongRows)
-        self.x = W.QComboBox()
-        self.y = W.QComboBox()
-        for axis, combo in [('X', self.x), ('Y', self.y)]:
-            combo.setAccessibleName(f'{axis} axis channel')
-            combo.setToolTip(f'Choose the numeric channel for the {axis} axis of the selected dataset.')
-            combo.setMinimumContentsLength(20)
-            combo.setSizeAdjustPolicy(W.QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
-            channel_form.addRow(f'{axis} axis channel', combo)
-        self.panel_choice = W.QComboBox()
-        self.panel_choice.addItem('Panel 1')
-        self.panel_choice.currentIndexChanged.connect(self.activate_panel)
-        channel_form.addRow('Active panel', self.panel_choice)
-        add_panel = W.QPushButton('Add panel with selected channels')
-        add_panel.clicked.connect(lambda: self.add_panel())
-        channel_form.addRow(add_panel)
-        assign = W.QPushButton('Assign selected channels to active panel')
-        assign.clicked.connect(self.assign_panel_channel)
-        channel_form.addRow(assign)
-        unassign = W.QPushButton('Remove selected dataset from active panel')
-        unassign.clicked.connect(self.unassign_panel_channel)
-        channel_form.addRow(unassign)
-        remove = W.QPushButton('Remove active panel')
-        remove.clicked.connect(self.remove_panel)
-        channel_form.addRow(remove)
-        self.sync_x_control = W.QCheckBox('Synchronize X limits')
-        self.sync_x_control.toggled.connect(self.set_sync_x)
-        channel_form.addRow(self.sync_x_control)
-        layout.addWidget(channels)
-        layout.addWidget(self.info)
-        form = W.QFormLayout()
-        self.style = W.QComboBox()
-        self.style.addItems(['Line', 'Scatter'])
-        self.title = W.QLineEdit()
-        self.xlabel = W.QLineEdit()
-        self.ylabel = W.QLineEdit()
-        for entry in (self.xlabel, self.ylabel):
-            entry.setToolTip('Optional custom label. Clear to follow the visible channel names.')
-        for label, widget in [("Style", self.style),
-                              ("Plot title", self.title), ("X label", self.xlabel), ("Y label", self.ylabel)]:
-            form.addRow(label, widget)
-        layout.addLayout(form)
+        self.plot_controls = PlotControlsPanel(layout)
+        self.info = self.plot_controls.info
+        self.x = self.plot_controls.x
+        self.y = self.plot_controls.y
+        self.panel_choice = self.plot_controls.panel_choice
+        self.sync_x_control = self.plot_controls.sync_x_control
+        self.style = self.plot_controls.style
+        self.title = self.plot_controls.title
+        self.xlabel = self.plot_controls.xlabel
+        self.ylabel = self.plot_controls.ylabel
+        self.plot_panel = self.plot_controls.plot_panel
+        self.axis_controls = self.plot_controls.axis_controls
+        self.color = self.plot_controls.color
+        self.marker = self.plot_controls.marker
+        self.legend_position = self.plot_controls.legend_position
+        self.cursor_enabled = self.plot_controls.cursor_enabled
+        self.log_notice = self.plot_controls.log_notice
+        self.coordinates = self.plot_controls.coordinates
+        self.plot_controls.activate_panel_requested.connect(self.activate_panel)
+        self.plot_controls.add_panel_requested.connect(self.add_panel)
+        self.plot_controls.assign_panel_channel_requested.connect(self.assign_panel_channel)
+        self.plot_controls.unassign_panel_channel_requested.connect(self.unassign_panel_channel)
+        self.plot_controls.remove_panel_requested.connect(self.remove_panel)
+        self.plot_controls.set_sync_x_requested.connect(self.set_sync_x)
+        self.plot_controls.apply_axes_requested.connect(lambda: self.guard(self.apply_axes))
+        self.plot_controls.choose_color_requested.connect(self.choose_color)
+        self.plot_controls.set_color_requested.connect(self.set_color)
+        self.plot_controls.appearance_changed_requested.connect(self.appearance_changed)
+        self.plot_controls.presentation_changed_requested.connect(self.presentation_changed)
 
     def _build_plot_controls(self, layout):
-        self.plot_panel = W.QWidget()
-        controls = W.QFormLayout(self.plot_panel)
-        controls.setContentsMargins(0, 0, 0, 0)
-        self.axis_controls = {}
-        for axis in ('x', 'y'):
-            scale = W.QComboBox()
-            scale.addItems(['linear', 'log'])
-            auto = W.QCheckBox("Automatic limits")
-            auto.setChecked(True)
-            low, high = W.QLineEdit(), W.QLineEdit()
-            low.setPlaceholderText("Minimum")
-            high.setPlaceholderText("Maximum")
-            for field, label in ((scale, "scale"), (auto, "automatic limits"),
-                                 (low, "minimum"), (high, "maximum")):
-                field.setAccessibleName(f"{axis.upper()} axis {label}")
-            row = W.QWidget()
-            row_layout = W.QHBoxLayout(row)
-            row_layout.setContentsMargins(0, 0, 0, 0)
-            row_layout.addWidget(low)
-            row_layout.addWidget(high)
-            controls.addRow(f"{axis.upper()} scale", scale)
-            controls.addRow(auto)
-            controls.addRow(row)
-            self.axis_controls[axis] = (scale, auto, low, high)
-            auto.toggled.connect(lambda checked, lo=low, hi=high: (lo.setEnabled(not checked), hi.setEnabled(not checked)))
-        apply = W.QPushButton("Apply axes")
-        apply.clicked.connect(lambda: self.guard(self.apply_axes))
-        controls.addRow(apply)
-        self.color = W.QPushButton("Automatic color")
-        self.color.clicked.connect(self.choose_color)
-        reset_color = W.QPushButton("Reset color")
-        reset_color.clicked.connect(lambda: self.set_color(""))
-        controls.addRow("Dataset color", self.color)
-        controls.addRow(reset_color)
-        self.marker = W.QComboBox()
-        for label, value in MARKERS.items():
-            self.marker.addItem(label, value)
-        self.marker.currentIndexChanged.connect(self.appearance_changed)
-        controls.addRow("Dataset marker", self.marker)
-        self.legend_position = W.QComboBox()
-        self.legend_position.addItems(LEGENDS)
-        self.legend_position.currentTextChanged.connect(self.presentation_changed)
-        controls.addRow("Legend", self.legend_position)
-        self.cursor_enabled = W.QCheckBox("Coordinate cursor")
-        self.cursor_enabled.toggled.connect(self.presentation_changed)
-        controls.addRow(self.cursor_enabled)
-        layout.addWidget(self.plot_panel)
-        self.plot_panel.hide()
         self.show_plot_controls.toggled.connect(self.plot_panel.setVisible)
-        self.log_notice = W.QLabel()
-        self.log_notice.setWordWrap(True)
-        layout.addWidget(self.log_notice)
-        self.coordinates = W.QLabel("")
         self.statusBar().addPermanentWidget(self.coordinates)
         self.canvas.mpl_connect('motion_notify_event', self.cursor_motion)
         self.sync_axis_controls()
-        hint = W.QLabel("Changing channels for a hidden dataset shows it alone. Check datasets to compare curves.")
-        hint.setWordWrap(True)
-        layout.addWidget(hint)
 
     def _build_statistics(self, layout):
         self.stats_panel = W.QGroupBox("Statistics — active dataset Y")
@@ -1571,34 +1500,17 @@ class MainWindow(W.QMainWindow):
         self.stats_result.setPlainText("\n".join(lines))
 
     def sync_axis_controls(self):
-        for axis, (scale, auto, low, high) in self.axis_controls.items():
-            state = self.view[axis]
-            scale.setCurrentText(state['scale'])
-            auto.setChecked(state['auto'])
-            limits = state['limits'] or (0, 1)
-            low.setText(f"{limits[0]:.12g}")
-            high.setText(f"{limits[1]:.12g}")
-            low.setEnabled(not state['auto'])
-            high.setEnabled(not state['auto'])
+        self.plot_controls.sync_axis_controls(self.view)
 
     def apply_axes(self):
-        proposed = {}
-        settings = {}
-        for axis, (scale, auto, low, high) in self.axis_controls.items():
-            limits = None if auto.isChecked() else [float(low.text()), float(high.text())]
-            if limits is not None and limits[0] >= limits[1]:
-                raise ValueError("Axis minimum must be less than maximum.")
-            proposed[axis] = dict(scale=scale.currentText(), auto=auto.isChecked(), limits=limits)
-            settings.update({axis + 'scale': scale.currentText(), axis + 'auto': auto.isChecked()})
-            if limits is not None:
-                settings[axis + 'lim'] = limits
-        validate_view(settings)
+        proposed = self.plot_controls.read_axes()
         self.view.update(proposed)
         # Applying automatic axes also resets any residual-panel zoom.
         self.view['resy'] = dict(scale='linear', auto=True, limits=None)
         self.changed()
         self.redraw()
         self.navigation.update()
+
 
     def choose_color(self):
         if self.current():
