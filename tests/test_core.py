@@ -1,12 +1,25 @@
 import json
 import numpy as np
 import pytest
-from rogi.core import Dataset, parse_text, fit_dataset, gaussian, export_data, export_fit
+from rogi.core import Dataset, parse_text, spectrum_table, fit_dataset, gaussian, export_data, export_fit
 from rogi.project import save_project, load_project
 
 
 def dataset(x, y):
     return Dataset('synthetic', ['x', 'y'], np.column_stack((x, y)))
+
+
+def test_spectrum_table_normalizes_headers_and_retains_missing_cells():
+    text = '[Instrument]\nMode: Voltage\n[Data]\nTime\tTime_Timestamp\tVoltage \tVoltage\t\n'
+    text += '2026/08/14_23:41:33\t10\t1\t\t\n\n'
+    data = parse_text(spectrum_table(text), delimiter='\t')
+    assert data.columns == ['Time_Timestamp', 'Voltage', 'Voltage [2]']
+    np.testing.assert_array_equal(data.values, [[10, 1, np.nan]])
+    with pytest.raises(ValueError, match='expected 4 fields'):
+        spectrum_table(text + 'date\t11\t2\n')
+    with pytest.raises(ValueError, match='empty'):
+        spectrum_table('[Data]\n')
+    assert spectrum_table('x\ty\n1\t2') is None
 
 
 def test_linear_known_and_uncertainty():
