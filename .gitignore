@@ -5,3 +5,7 @@ __pycache__/
 *.egg-info/
 .idea/
 .DS_Store
+
+# Local instrument data and generated outputs (too large for git; see README "Example data")
+example-data/
+artifacts/
