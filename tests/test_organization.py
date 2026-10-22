@@ -207,3 +207,34 @@ def test_organize_menu_select_all_and_assign_group(window, monkeypatch):
     window.organization_actions['Clear selection'].trigger()
     assert window.current() is None
     assert not window.organization_actions['Remove selected…'].isEnabled()
+
+
+def test_raw_derived_filter_survives_regrouping(app):
+    from rogi.analysis import analyze
+    from rogi.browser_panel import filter_dataset_ids
+    raw = parse_text('x (s),y (V)\n0,1\n1,3\n2,5', name='raw')
+    copy = raw.derived()
+    result = analyze(raw, [dict(operation='mean_subtract', parameters={})])
+    datasets = [raw, copy, result]
+    assert filter_dataset_ids(datasets, None, '', False, '', '', '', '', kind='raw') == {copy.id, result.id}
+    assert filter_dataset_ids(datasets, None, '', False, '', '', '', '', kind='derived') == {raw.id}
+    assert filter_dataset_ids(datasets, None, '', False, '', '', '', '') == set()
+    window = MainWindow()
+    try:
+        for d in datasets:
+            window.add_dataset(d)
+        window.browser.selectAll()
+        window.set_selected_group('Mixed')
+        shown = lambda: [window.dataset_for_item(window.browser.item(i)) for i in range(window.browser.count())
+                         if not window.browser.item(i).isHidden()]
+        window.kind_filter.setCurrentIndex(window.kind_filter.findData('raw'))
+        window.group_filter.setCurrentIndex(window.group_filter.findData('Mixed'))
+        assert shown() == [raw]
+        window.kind_filter.setCurrentIndex(window.kind_filter.findData('derived'))
+        assert shown() == [copy, result]
+        assert all(d.group == 'Mixed' for d in datasets)
+    finally:
+        window.external_dirty = False
+        window.history.setClean()
+        window.update_dirty()
+        window.close()

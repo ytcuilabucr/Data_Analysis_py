@@ -222,3 +222,47 @@ def test_editor_saves_and_loads_display_settings(app):
         assert dialog.display() == display()
     finally:
         dialog.close()
+
+
+def test_place_results_destinations():
+    from rogi.presets import place_results
+    nested, manual, loose = source('nested'), source('manual'), source('loose')
+    nested.group_path = [{'field': 'power', 'value': '10'}]
+    manual.group = 'Run A'
+    sources = [nested, manual, loose]
+    preset = make_preset([recipe()[0]])
+    results = apply_preset(sources, preset, 'Center')
+    assert [r.group for r in results] == ['power = 10', 'Run A', '']
+    place_results(sources, results, 'subgroup', ' Center ')
+    assert results[0].group_path == [{'field': 'power', 'value': '10'}, {'field': None, 'value': 'Center'}]
+    assert results[0].group == 'power = 10 / Center'
+    assert results[1].group_path == [{'field': None, 'value': 'Run A'}, {'field': None, 'value': 'Center'}]
+    assert (results[2].group, results[2].group_path) == ('Center', [])
+    place_results(sources, results, 'group', 'Power (mW)')
+    assert all((r.group, r.group_path) == ('Power (mW)', []) for r in results)
+    with pytest.raises(ValueError, match='group name'):
+        place_results(sources, results, 'group', '  ')
+    # Inputs keep their own groups.
+    assert nested.group_path == [{'field': 'power', 'value': '10'}] and manual.group == 'Run A' and loose.group == ''
+
+
+def test_batch_dialog_places_results_in_chosen_group(app):
+    sources = [source('one'), source('two')]
+    for d in sources:
+        d.group = 'Scans'
+    dialog = BatchPipelineDialog(sources, {'Center': make_preset([recipe()[0]])})
+    try:
+        assert dialog.group_name.text() == 'Center' and not dialog.group_name.isEnabled()
+        dialog.destination.setCurrentIndex(dialog.destination.findData('subgroup'))
+        assert dialog.group_name.isEnabled()
+        dialog.group_name.setText('')
+        dialog.preview()
+        dialog.save_result()
+        assert dialog.result() != dialog.DialogCode.Accepted and 'group name' in dialog.status.text()
+        dialog.group_name.setText('Centered')
+        dialog.save_result()
+        assert dialog.result() == dialog.DialogCode.Accepted
+        assert [d.group for d in dialog.datasets] == ['Scans / Centered'] * 2
+        assert [d.group for d in sources] == ['Scans', 'Scans']
+    finally:
+        dialog.close()

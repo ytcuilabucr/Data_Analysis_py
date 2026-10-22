@@ -138,6 +138,7 @@ class MainWindow(W.QMainWindow):
         self.date_to = self.browser_panel.date_to
         self.favorites_filter = self.browser_panel.favorites_filter
         self.group_filter = self.browser_panel.group_filter
+        self.kind_filter = self.browser_panel.kind_filter
         self.group_tree = self.browser_panel.group_tree
         self.metadata_filter = self.browser_panel.metadata_filter
         self.organization_actions = self.browser_panel.organization_actions

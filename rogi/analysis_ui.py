@@ -1,7 +1,7 @@
 """Pipeline editor and explicit, disposable result preview."""
 from copy import deepcopy
 from .presets import (make_preset, validate_presets, save_presets, load_presets, apply_preset,
-                      PALETTES, DEFAULT_DISPLAY)
+                      place_results, PALETTES, DEFAULT_DISPLAY)
 from PySide6 import QtWidgets as W, QtCore as C
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
@@ -492,6 +492,21 @@ class BatchPipelineDialog(W.QDialog):
         self.figure = Figure(figsize=(7, 3), tight_layout=True)
         self.canvas = FigureCanvasQTAgg(self.figure)
         layout.addWidget(self.canvas, 1)
+        destination = W.QFormLayout()
+        self.destination = W.QComboBox()
+        self.destination.setAccessibleName('Group for results')
+        for label, key in [("Same group as each input", 'source'),
+                           ("Subgroup of each input's group", 'subgroup'),
+                           ('One new group for all results', 'group')]:
+            self.destination.addItem(label, key)
+        self.group_name = W.QLineEdit(self.preset.currentText())
+        self.group_name.setAccessibleName('Result group name')
+        destination.addRow('Put results in', self.destination)
+        destination.addRow('Group name', self.group_name)
+        layout.addLayout(destination)
+        self.destination.currentIndexChanged.connect(self.update_destination)
+        self.preset.currentTextChanged.connect(self.group_name.setText)
+        self.update_destination()
         self.status = W.QLabel('Choose a preset and preview all inputs.')
         self.status.setWordWrap(True)
         layout.addWidget(self.status)
@@ -507,6 +522,9 @@ class BatchPipelineDialog(W.QDialog):
         layout.addLayout(controls)
         self.preset.currentIndexChanged.connect(self.invalidate)
         self.invalidate()
+
+    def update_destination(self, *_):
+        self.group_name.setEnabled(self.destination.currentData() != 'source')
 
     def invalidate(self, *_):
         self.datasets = []
@@ -556,5 +574,10 @@ class BatchPipelineDialog(W.QDialog):
                    for source, result in zip(self.sources, self.datasets)):
                 self.invalidate()
                 self.status.setText('An input changed. Preview again.')
+                return
+            try:
+                place_results(self.sources, self.datasets, self.destination.currentData(), self.group_name.text())
+            except ValueError as error:
+                self.status.setText(str(error))
                 return
             self.accept()

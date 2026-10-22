@@ -55,6 +55,16 @@ one undoable action. Changing a channel or preset invalidates the preview. Raw
 inputs remain unchanged, and each result retains its own source ID/revision and
 full executed recipe regardless of later edits to the preset.
 
+**Put results in** chooses the results' group. **Same group as each input** (the
+default) places each result beside its input. **Subgroup of each input's group**
+nests results under each input's group, for example `power = 10 / Photodiode`;
+ungrouped inputs get a top-level group of that name. **One new group for all
+results** collects every result in a single manual group. **Group name** starts
+as the preset name and must not be blank for the last two choices. The choice is
+applied when the results are created, is undone with them, and never changes the
+inputs' groups. To list only the inputs afterwards, use the browser's
+**Raw data only** filter (see [grouping](grouping.md)).
+
 ## One-click temporary image previews
 
 Select an image file and channel in **2D Map**, then click a named preset under

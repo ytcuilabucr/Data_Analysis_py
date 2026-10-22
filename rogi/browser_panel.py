@@ -172,6 +172,13 @@ class BrowserPanel(W.QWidget):
         self.group_filter.setAccessibleName("Filter dataset group")
         self.group_filter.addItem("All groups", None)
         self.group_filter.addItem("Ungrouped", "")
+        # Computed from Dataset.raw, never stored: regrouping cannot mix raw and derived data.
+        self.kind_filter = W.QComboBox()
+        self.kind_filter.setAccessibleName("Filter raw or derived data")
+        self.kind_filter.setToolTip("Raw data are imported files (read-only). Derived data are editable copies "
+                                    "and analysis results.")
+        for label, kind in [("Raw and derived", None), ("Raw data only", "raw"), ("Derived only", "derived")]:
+            self.kind_filter.addItem(label, kind)
         self.favorites_filter = W.QCheckBox('Favorites only')
         self.tag_filter = W.QLineEdit()
         self.tag_filter.setPlaceholderText('Filter tag…')
@@ -215,7 +222,7 @@ class BrowserPanel(W.QWidget):
             action.triggered.connect(lambda checked=False, fn=function: fn())
             self.organization_actions[label] = action
         organize.setMenu(menu)
-        for widget in (self.search, self.group_filter, self.favorites_filter, self.tag_filter,
+        for widget in (self.search, self.group_filter, self.kind_filter, self.favorites_filter, self.tag_filter,
                        self.metadata_filter, self.date_from, self.date_to, self.group_tree, organize, self.browser):
             browser_layout.addWidget(widget)
         self.selection_info = W.QLabel("0 selected")
@@ -225,6 +232,7 @@ class BrowserPanel(W.QWidget):
         browser_layout.addWidget(date_hint)
         self.search.textChanged.connect(self.filter_browser)
         self.group_filter.currentIndexChanged.connect(self.filter_browser)
+        self.kind_filter.currentIndexChanged.connect(self.filter_browser)
         self.browser.itemSelectionChanged.connect(self.selection_changed)
 
 
@@ -328,7 +336,7 @@ class BrowserPanel(W.QWidget):
         filters = (group, query, self.favorites_filter.isChecked(),
                    self.tag_filter.text().strip().casefold(),
                    self.metadata_filter.text().strip().casefold(), lower, upper)
-        hidden_ids = filter_dataset_ids(self.datasets, *filters)
+        hidden_ids = filter_dataset_ids(self.datasets, *filters, kind=self.kind_filter.currentData())
         with C.QSignalBlocker(self.browser):
             for row in range(self.browser.count()):
                 item = self.browser.item(row)
@@ -430,8 +438,11 @@ def field_query(datasets, query):
     return matches if named else None
 
 
-def filter_dataset_ids(datasets, group, query, favorites, tag, metadata, lower, upper):
-    """Compute visibility without Qt access; empty text filters need no indexing."""
+def filter_dataset_ids(datasets, group, query, favorites, tag, metadata, lower, upper, kind=None):
+    """Compute visibility without Qt access; empty text filters need no indexing.
+
+    kind is None (all), 'raw' (imported, read-only) or 'derived' (copies and analysis results).
+    """
     hidden = set()
     if query or metadata:
         current = {d.id for d in datasets}
@@ -445,6 +456,7 @@ def filter_dataset_ids(datasets, group, query, favorites, tag, metadata, lower, 
         timestamp = acquisition_timestamp(d)
         date = timestamp[:10] if timestamp else None
         if (not matches
+                or (kind is not None and d.raw != (kind == 'raw'))
                 or (exact and not exact(d))
                 or (query and not exact
                     and query not in f"{d.name} {d.group} {d.source} {d.tags} {d.comments} {text}".casefold())

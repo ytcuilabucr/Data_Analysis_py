@@ -101,3 +101,28 @@ def apply_preset(datasets, preset, name):
         except ValueError as error:
             raise ValueError(f'{dataset.name}: {error}') from error
     return results
+
+
+DESTINATIONS = ('source', 'subgroup', 'group')
+
+
+def place_results(sources, results, destination='source', name=''):
+    """Assign result groups in place: 'source' keeps each input's group, 'subgroup'
+    nests results under it, 'group' collects all results in one manual group."""
+    from .grouping import group_path, path_label
+    if destination not in DESTINATIONS:
+        raise ValueError('Unknown result destination.')
+    name = name.strip()
+    if destination != 'source' and not name:
+        raise ValueError('Enter a group name for the results.')
+    for source, result in zip(sources, results, strict=True):
+        if destination == 'group':
+            result.group, result.group_path = name, []
+        elif destination == 'subgroup':
+            path = group_path(source)
+            if path:
+                result.group_path = path + [{'field': None, 'value': name}]
+                result.group = path_label(result.group_path)
+            else:
+                result.group, result.group_path = name, []
+    return results

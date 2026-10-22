@@ -138,6 +138,7 @@ def import_file(self):
             field.clear()
         self.favorites_filter.setChecked(False)
         self.group_filter.setCurrentIndex(0)
+        self.kind_filter.setCurrentIndex(0)
         for index, dataset in enumerate(imported):
             dataset.visible = index == 0
             self.add_dataset(dataset)
@@ -243,6 +244,7 @@ def restore_view(self, name):
                     setattr(dataset, field, state[field])
     self.search.clear()
     self.group_filter.setCurrentIndex(0)
+    self.kind_filter.setCurrentIndex(0)
     self.refresh_history_view()
     active = next((d for d in self.datasets if d.id == snapshot['active']), None)
     if active is None:
@@ -375,6 +377,7 @@ def open_project(self, path=None, *, confirm=True):
                 field.clear()
             self.favorites_filter.setChecked(False)
             self.group_filter.setCurrentIndex(0)
+            self.kind_filter.setCurrentIndex(0)
             with C.QSignalBlocker(self.browser):
                 self.browser.clear()
                 self.datasets = []
