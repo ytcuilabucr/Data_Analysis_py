@@ -1,0 +1,15 @@
+# Image viewing
+
+[User guide](index.md) · [Validation and limitations](../limitations.md)
+
+Select an imported scan file in the dataset list, click **2D Map** above the plot, and use **Channel** to switch signals or scan directions. This also works with previously saved Rogi projects containing the SPM pixel-coordinate columns; no reimport is needed. The map follows the active dataset, independently of the checkboxes used for line plots. Maps are centered and use the available plot area. The data table is hidden by default in 2D Map; enable **Show data table** to bring it back. Switching to Line plot restores the table. Spectra and force curves remain available in **Line plot**.
+
+- **Colors** selects the color palette. The color bar retains the channel's units (raw counts for Bruker).
+- **Full range** displays the finite minimum and maximum. **Percentile** starts at 2–98%; enter Low/High percentiles and press **Apply**. **Manual** accepts explicit signal limits, including scientific notation. Missing pixels are masked and excluded from contrast calculations.
+- Hover over a pixel for its X/Y indices and original signal value. Use the text buttons **Reset view**, **Pan**, and **Zoom** to navigate. Use **Export plot…** to save the figure. Palette and contrast changes preserve the current zoom.
+- **Compare with** lists only matching channels from the same source file type (.spm or .sxm) and instrument format. Channel name, scan direction, and units must match; the active channel itself is excluded. It is disabled when no match exists. Full-range/percentile scaling is calculated separately for each channel; manual limits apply to both. Read the individual color bars when comparing automatically scaled maps.
+- **Export plot…** exports the active tab, including both maps and color bars when comparing, as PNG or SVG.
+
+Maps preserve stored pixel order and use physical X/Y scan dimensions from the Bruker Scan Size or Nanonis SCAN_RANGE headers when available. A 256 × 64 scan over 20 × 20 µm therefore displays as a square with rectangular sampling cells. This changes the displayed pixel spacing without adding or interpolating measurements. Axes fall back to pixel indices when dimensions or units cannot be resolved. Cursor readout includes both pixel indices and physical pixel-center coordinates. Scan rotation and laboratory position are not applied. Contrast changes never modify measurements. Editable copies update after edits and undo/redo; invalid or duplicate pixel coordinates produce an explanatory message. Palette, contrast, comparison, and map zoom are session display controls; capture them in a [named saved view](plot-controls.md#named-saved-views) to retain them in the project.
+
+To combine the example measurement collections, select `example-data/260813` in **Convert folder…** and save as `example-data/260813.rogi.h5`. Use **Open project…** to open the result and the dataset group filter to switch between Spectrum, spm, and sxm. Binary instrument source files and unsupported Igor/thumbnail files are not embedded; retain the original folder as the source archive.
