@@ -42,8 +42,10 @@ from .core import region_statistics
 from .project import save_project, load_project, convert_folder
 
 
-# The file window leaves room beside it for the plot window (capped to the screen).
+# The file window leaves room beside it for the plot window (capped to the screen);
+# without the optional data table it is only as wide as the dataset list.
 FILE_WINDOW_SIZE = (1150, 760)
+COMPACT_FILE_WIDTH = 520
 
 
 def project_preferences():
@@ -55,8 +57,12 @@ class MainWindow(W.QMainWindow):
         super().__init__()
         self._build_state()
         self._build_menus()
+        central = W.QWidget()
+        central_layout = W.QVBoxLayout(central)
+        central_layout.setContentsMargins(0, 0, 0, 0)
+        self.setCentralWidget(central)
+        central_layout.addLayout(self._build_file_buttons())
         splitter = W.QSplitter()
-        self.setCentralWidget(splitter)
         self._build_browser(splitter)
         self._build_center(splitter)
         layout = self._build_analysis_container(splitter)
@@ -68,7 +74,12 @@ class MainWindow(W.QMainWindow):
         self.analysis_panel.setMinimumWidth(self.analysis_panel.widget().minimumSizeHint().width()
                                             + self.analysis_panel.verticalScrollBar().sizeHint().width()
                                             + 2 * self.analysis_panel.frameWidth())
+        central_layout.addWidget(splitter)
         self._build_connections()
+        shown = self.preferences.value('data_table_shown', False, type=bool)
+        with C.QSignalBlocker(self.show_table_button):
+            self.show_table_button.setChecked(shown)
+        self.set_table_shown(shown, remember=False)
 
     @property
     def datasets(self):
@@ -110,7 +121,7 @@ class MainWindow(W.QMainWindow):
         self.stats_context = None
         self.plot_stale = False
         self.setWindowTitle("Rogi — Scientific Analysis")
-        fit_to_screen(self, *FILE_WINDOW_SIZE)
+        fit_to_screen(self, COMPACT_FILE_WIDTH, FILE_WINDOW_SIZE[1])
         self.history = G.QUndoStack(self)
 
     def _build_menus(self):
@@ -176,13 +187,20 @@ class MainWindow(W.QMainWindow):
             self.table.addAction(action)
             self.edit_menu.addAction(action)
             action.setEnabled(False)
-        files = W.QWidget()
-        files_layout = W.QVBoxLayout(files)
-        files_layout.setContentsMargins(0, 0, 0, 0)
+        splitter.addWidget(self.table)
+
+    def _build_file_buttons(self):
+        row = W.QHBoxLayout()
+        row.setContentsMargins(8, 6, 8, 0)
         self.open_plot_button = plot_windows.open_button()
-        files_layout.addWidget(self.open_plot_button)
-        files_layout.addWidget(self.table)
-        splitter.addWidget(files)
+        row.addWidget(self.open_plot_button)
+        self.show_table_button = W.QPushButton("Show data table")
+        self.show_table_button.setCheckable(True)
+        self.show_table_button.setToolTip("Show the selected dataset's values beside the dataset list")
+        self.show_table_button.toggled.connect(self.set_table_shown)
+        row.addWidget(self.show_table_button)
+        row.addStretch()
+        return row
 
     def _build_analysis_container(self, splitter):
         panel = W.QWidget()
@@ -379,6 +397,14 @@ class MainWindow(W.QMainWindow):
 
     def remove_selected(self):
         return dataset_actions.remove_selected(self)
+
+    def set_table_shown(self, shown, remember=True):
+        return table_actions.set_table_shown(self, shown, remember)
+
+    def fit_file_window(self):
+        """Size for the dataset list, plus the data table when it is shown; height is kept once on screen."""
+        width = FILE_WINDOW_SIZE[0] if self.table.isVisibleTo(self) else COMPACT_FILE_WIDTH
+        fit_to_screen(self, width, self.height() if self.isVisible() else FILE_WINDOW_SIZE[1])
 
     def update_dirty(self, *args):
         return project_commands.update_dirty(self, *args)
@@ -666,7 +692,7 @@ def main():
     app = W.QApplication.instance() or W.QApplication(sys.argv)
     window = MainWindow()
     window.show()
-    fit_to_screen(window, *FILE_WINDOW_SIZE)  # actual frame margins are known once shown
+    window.fit_file_window()  # actual frame margins are known once shown
     window.restore_plot_window()
     C.QTimer.singleShot(0, window.suggest_recent_project)
     sys.exit(app.exec())

@@ -105,6 +105,15 @@ def refresh_history_view(self):
     self.redraw()
 
 
+def set_table_shown(self, shown, remember=True):
+    """The data table is optional; hidden, the file window shrinks to the dataset list."""
+    if remember:
+        self.preferences.setValue('data_table_shown', shown)
+    self.table.setVisible(shown)
+    self.show_table_button.setText("Hide data table" if shown else "Show data table")
+    self.fit_file_window()
+
+
 def update_clipboard_actions(self, *args):
     model = self.table.model()
     selected = bool(self.table.selectionModel() and self.table.selectionModel().hasSelection())

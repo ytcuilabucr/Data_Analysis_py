@@ -4,9 +4,9 @@
 
 ## Plot window
 
-Rogi starts with the file window only: the dataset list and the data table, at a size that leaves room beside it for plots. Plots open in a separate **plot window** holding the **Line plot** (with the plot controls beside it) and the **2D Map** tabs, for example on a second monitor.
+Rogi starts with a compact file window: the dataset list, with **Open plot window** and **Show data table** buttons above it. **Show data table** widens the window to show the selected dataset's values beside the list; **Hide data table** shrinks it again. The choice is remembered on this computer. Plots open in a separate **plot window** holding the **Line plot** (with the plot controls beside it) and the **2D Map** tabs, for example on a second monitor.
 
-- Click the large blue **Open plot window** button above the data table (it reads **Bring plot window to front** while the window is open), or use **Plot window** on the toolbar, **View → Plot window**, or Ctrl+Shift+P (⌘⇧P on macOS). Double-clicking a dataset in the list also opens it. Closing the plot window only hides it; closing the file window ends Rogi.
+- Click the blue **Open plot window** button at the top of the file window (it reads **Bring plot window to front** while the window is open), or use **Plot window** on the toolbar, **View → Plot window**, or Ctrl+Shift+P (⌘⇧P on macOS). Double-clicking a dataset in the list also opens it. Closing the plot window only hides it; closing the file window ends Rogi.
 - Commands that act on the plot open it: **Show fitting**, **Show statistics**, **Show plot controls**, **Export plot…** and restoring a saved view. Opening a project does not.
 - While the plot window is closed, plots are not redrawn; selecting datasets is faster on large scans. The plot is drawn when the window opens.
 - The plot window is a normal window: it can go full screen, be minimized, and stays visible when another application is active. Its title names the view, the active dataset, and the panel when there are several.

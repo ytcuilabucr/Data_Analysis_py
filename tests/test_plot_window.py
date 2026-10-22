@@ -203,7 +203,7 @@ def test_file_window_leaves_room_for_the_plot(window):
 def test_prominent_button_opens_and_raises_the_plot(window, app):
     button = window.open_plot_button
     assert button.isVisible() and button.text() == 'Open plot window'
-    assert button.height() >= 48 and window.isAncestorOf(button)
+    assert window.isAncestorOf(button)
     button.click()
     app.processEvents()
     assert window.plot_window.isVisible() and button.text() == 'Bring plot window to front'
@@ -213,3 +213,24 @@ def test_prominent_button_opens_and_raises_the_plot(window, app):
     window.plot_window.close()
     app.processEvents()
     assert button.text() == 'Open plot window'
+
+
+def test_data_table_is_optional_and_remembered(window, app):
+    from rogi.ui import COMPACT_FILE_WIDTH
+    assert not window.table.isVisible() and window.show_table_button.text() == 'Show data table'
+    compact = window.width()
+    assert compact <= COMPACT_FILE_WIDTH
+    assert window.preferences.value('data_table_shown') is None  # nothing stored until chosen
+    window.show_table_button.click()
+    app.processEvents()
+    assert window.table.isVisible() and window.show_table_button.text() == 'Hide data table'
+    assert window.width() >= compact
+    window.close()
+    reopened = MainWindow()
+    try:
+        reopened.show()
+        assert reopened.table.isVisible() and reopened.show_table_button.isChecked()
+        reopened.show_table_button.click()
+        assert not reopened.table.isVisible() and reopened.width() <= COMPACT_FILE_WIDTH
+    finally:
+        reopened.close()

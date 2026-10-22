@@ -138,6 +138,7 @@ def test_single_column_header_with_comma(window):
 
 def test_shortcut_dispatch_and_clipboard(window, monkeypatch, tmp_path):
     window.show()
+    window.show_table_button.click()  # table shortcuts act on the visible table
     W.QApplication.processEvents()
     window.select_table_block(0, 0, 2, 2)
     window.table.setFocus()

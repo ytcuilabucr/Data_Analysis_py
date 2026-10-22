@@ -12,8 +12,8 @@ LINE, MAP = 0, 1
 OPEN_TEXT, FRONT_TEXT = 'Open plot window', 'Bring plot window to front'
 # Fixed colors read the same in light and dark appearance; disabled while locked.
 OPEN_BUTTON_STYLE = """
-QPushButton#open_plot_button { background-color: #1f6feb; color: white; font-size: 17px; font-weight: 600;
-                               padding: 12px 20px; border: none; border-radius: 8px; }
+QPushButton#open_plot_button { background-color: #1f6feb; color: white; font-size: 13px; font-weight: 600;
+                               padding: 5px 14px; border: none; border-radius: 6px; }
 QPushButton#open_plot_button:hover { background-color: #3b82f6; }
 QPushButton#open_plot_button:pressed { background-color: #1858c4; }
 QPushButton#open_plot_button:disabled { background-color: #9aa4b2; }
@@ -47,7 +47,6 @@ def open_button():
     button.setObjectName('open_plot_button')
     button.setStyleSheet(OPEN_BUTTON_STYLE)
     button.setCursor(C.Qt.CursorShape.PointingHandCursor)
-    button.setMinimumHeight(48)
     button.setToolTip('Line plot and 2D map open in their own window (Ctrl+Shift+P, ⌘⇧P on macOS)')
     return button
 

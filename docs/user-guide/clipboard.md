@@ -15,7 +15,7 @@ The File menu and toolbar share these shortcuts (use **Cmd** on macOS and **Ctrl
 | Undo | Cmd/Ctrl+Z |
 | Redo | Cmd+Shift+Z on macOS; platform-standard Ctrl+Y / Ctrl+Shift+Z elsewhere |
 
-Select a complete rectangular block of table cells, then copy. The clipboard contains tab-separated values with column headers; missing values are blank. You can copy raw datasets. Nonrectangular selections are rejected rather than filling gaps with unselected data.
+Click **Show data table** if the table is hidden, select a complete rectangular block of table cells, then copy. The clipboard contains tab-separated values with column headers; missing values are blank. You can copy raw datasets. Nonrectangular selections are rejected rather than filling gaps with unselected data.
 
 To paste, select a destination cell or rectangle in an **editable copy**, then paste. The block starts at the selection's top-left; the selection size does not resize, repeat, or tile the pasted block. Tab-separated and comma-separated numeric tables are accepted, including blank/NA/NaN/N/A for missing values. Data copied by Rogi includes recognized headers; external text may include a header row that exactly matches the destination columns and contains nonnumeric labels. Numeric-looking external headers are treated as data to avoid silently discarding a row. No rows or columns are added.
 
