@@ -323,46 +323,50 @@ def open_project(self, path=None, *, confirm=True):
         self.pipeline_presets = deepcopy(settings.get('pipeline_presets', {}))
         self.image_viewer.set_presets(self.pipeline_presets)
         self.refresh_saved_views_menu()
-        self.opening = True
-        self.history.clear()
-        self.stats_region = None
-        self.stats_context = None
-        self.stats_drag.setChecked(False)
-        self.search.clear()
-        for field in (self.tag_filter, self.metadata_filter, self.date_from, self.date_to):
-            field.clear()
-        self.favorites_filter.setChecked(False)
-        self.group_filter.setCurrentIndex(0)
-        with C.QSignalBlocker(self.browser):
-            self.browser.clear()
-            self.datasets = []
-        self.update_groups()
-        self.selection_changed()
-        self.table.setModel(None)
-        self.result.clear()
-        for field in ('title', 'xlabel', 'ylabel'):
-            getattr(self, field).setText(settings.get(field, ''))
-        self.datasets = datasets
-        self.refresh_history_view()
-        if datasets:
-            fallback = next((i for i, d in enumerate(datasets) if d.visible), 0)
-            row = next((i for i, d in enumerate(datasets)
-                        if d.id == settings.get('selected_dataset_id')), fallback)
-            self.activate_dataset(datasets[row].id)
-        self.loading = True
-        self.legend_position.setCurrentText(settings.get('legend', 'best'))
-        self.cursor_enabled.setChecked(settings.get('cursor', False))
-        with C.QSignalBlocker(self.show_fitting):
-            self.show_fitting.setChecked(settings.get('show_fitting', False))
-        self.fit_panel.setVisible(self.show_fitting.isChecked())
-        self.export_fit_action.setVisible(self.show_fitting.isChecked())
-        self.drag.setChecked(False)
-        self.loading = False
-        for axis in self.view:
-            self.view[axis] = dict(scale=settings.get(axis + 'scale', 'linear'),
-                                  auto=settings.get(axis + 'auto', axis + 'lim' not in settings),
-                                  limits=settings.get(axis + 'lim'))
-        self.restore_panels(settings)
+        self.redraw_deferred = True
+        try:
+            self.opening = True
+            self.history.clear()
+            self.stats_region = None
+            self.stats_context = None
+            self.stats_drag.setChecked(False)
+            self.search.clear()
+            for field in (self.tag_filter, self.metadata_filter, self.date_from, self.date_to):
+                field.clear()
+            self.favorites_filter.setChecked(False)
+            self.group_filter.setCurrentIndex(0)
+            with C.QSignalBlocker(self.browser):
+                self.browser.clear()
+                self.datasets = []
+            self.update_groups()
+            self.selection_changed()
+            self.table.setModel(None)
+            self.result.clear()
+            for field in ('title', 'xlabel', 'ylabel'):
+                getattr(self, field).setText(settings.get(field, ''))
+            self.datasets = datasets
+            self.refresh_history_view()
+            if datasets:
+                fallback = next((i for i, d in enumerate(datasets) if d.visible), 0)
+                row = next((i for i, d in enumerate(datasets)
+                            if d.id == settings.get('selected_dataset_id')), fallback)
+                self.activate_dataset(datasets[row].id)
+            self.loading = True
+            self.legend_position.setCurrentText(settings.get('legend', 'best'))
+            self.cursor_enabled.setChecked(settings.get('cursor', False))
+            with C.QSignalBlocker(self.show_fitting):
+                self.show_fitting.setChecked(settings.get('show_fitting', False))
+            self.fit_panel.setVisible(self.show_fitting.isChecked())
+            self.export_fit_action.setVisible(self.show_fitting.isChecked())
+            self.drag.setChecked(False)
+            self.loading = False
+            for axis in self.view:
+                self.view[axis] = dict(scale=settings.get(axis + 'scale', 'linear'),
+                                      auto=settings.get(axis + 'auto', axis + 'lim' not in settings),
+                                      limits=settings.get(axis + 'lim'))
+            self.restore_panels(settings)
+        finally:
+            self.redraw_deferred = False
         self.redraw()
         self.navigation.update()
         self.path = Path(path)

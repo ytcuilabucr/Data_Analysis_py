@@ -1,64 +1,47 @@
-"""Full-resolution Agg rendering of detached figures in a worker thread.
+"""Matplotlib canvas that defers drawing while a worker operation is running.
 
-Qt widgets and the live figure remain on the GUI thread. Pickling a Figure
-excludes its GUI canvas and non-pickleable callbacks. The worker owns the copy;
-only its completed renderer and axes layout are published back on the GUI thread.
+Rendering itself stays synchronous on the GUI thread: plots redraw on almost
+every click, and routing each draw through a locked worker operation disabled
+the whole window per click (visible flashing and swallowed input).
 """
-import pickle
-from matplotlib.backends.backend_agg import FigureCanvasAgg
+from contextlib import contextmanager
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
-from matplotlib.backend_bases import DrawEvent
-from PySide6 import QtCore as C
-from .operations import run_operation
 
 
-def render_snapshot(payload, dpi=None):
-    figure = pickle.loads(payload)
-    # Figure pickling deliberately resets HiDPI to its original logical DPI.
-    if dpi is not None:
-        figure.set_dpi(dpi)
-    canvas = FigureCanvasAgg(figure)
-    canvas.draw()
-    positions = [(ax.get_position(original=True).frozen(), ax.get_position().frozen())
-                 for ax in figure.axes]
-    return canvas.renderer, positions
+_held = [0]
+_held_canvases = set()
+
+
+@contextmanager
+def hold_draws():
+    """Skip every canvas draw while the GUI waits on background work; draw each once afterwards.
+
+    Otherwise each wait renders whatever draw_idle is queued, and the next change renders again.
+    """
+    _held[0] += 1
+    try:
+        yield
+    finally:
+        _held[0] -= 1
+        if not _held[0]:
+            pending = list(_held_canvases)
+            _held_canvases.clear()
+            for canvas in pending:
+                canvas.draw_idle()
 
 
 class ResponsiveCanvas(FigureCanvasQTAgg):
     def draw(self):
-        if self._is_drawing:
+        if _held[0]:
+            _held_canvases.add(self)
             return
         root = self.window()
         if getattr(root, 'operation_active', False):
             # An earlier draw_idle may arrive inside an I/O worker's event loop.
-            # Never start a second operation or change the locked figure.
+            # Do not render the figure while the operation holds the editing lock;
+            # run_operation redraws pending canvases once it finishes.
             if not hasattr(root, '_pending_canvases'):
                 root._pending_canvases = set()
             root._pending_canvases.add(self)
             return
-        self._is_drawing = True
-        self._draw_pending = False
-        try:
-            size = (self.figure.bbox.width, self.figure.bbox.height, self.figure.dpi)
-            payload = pickle.dumps(self.figure, protocol=pickle.HIGHEST_PROTOCOL)
-            renderer, positions = run_operation(self, 'Rendering plot', lambda: render_snapshot(payload, size[2]))
-            if size != (self.figure.bbox.width, self.figure.bbox.height, self.figure.dpi):
-                self.figure.stale = True
-                C.QTimer.singleShot(0, self.draw_idle)
-                return
-            for ax, (original, active) in zip(self.figure.axes, positions):
-                # Private position setter preserves constrained-layout membership.
-                ax._set_position(original, which='original')
-                ax._set_position(active, which='active')
-            self.renderer = renderer
-            self._lastKey = (self.figure.bbox.width, self.figure.bbox.height, self.figure.dpi)
-            self.figure.stale = False
-            DrawEvent('draw_event', self, renderer)._process()
-        except Exception as error:
-            if hasattr(root, 'error'):
-                root.error(str(error))
-            else:
-                raise
-        finally:
-            self._is_drawing = False
-        self.update()
+        super().draw()

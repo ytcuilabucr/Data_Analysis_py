@@ -55,13 +55,14 @@ from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
 from .navigation import PlotNavigationToolbar
 from .images import raster, contrast_limits
 from .spatial import image_geometry
+from .screen import fit_to_screen
 
 
 class ImagePreviewDialog(W.QDialog):
     def __init__(self, source, preset, preset_name, parent=None, palette='viridis', transpose=False):
         super().__init__(parent)
         self.setWindowTitle(f'Temporary image preview — {preset_name}')
-        self.resize(1050, 740)
+        fit_to_screen(self, 1050, 740)
         self.input = raster(source).copy()
         self.operations = deepcopy(preset['operations'])
         self.geometry = image_geometry(source, self.input.shape)

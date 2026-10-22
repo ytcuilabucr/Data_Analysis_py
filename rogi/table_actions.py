@@ -174,7 +174,8 @@ def select(self, row):
     dataset = self.current()
     self.refresh_statistics()
     if dataset is None:
-        self.image_viewer.set_context(self.datasets, None)
+        if not getattr(self, 'redraw_deferred', False):
+            self.image_viewer.set_context(self.datasets, None)
         self.table.setModel(None)
         self.update_clipboard_actions()
         self.result.clear()

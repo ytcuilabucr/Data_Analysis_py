@@ -2,7 +2,6 @@
 from dataclasses import dataclass, field
 from PySide6 import QtCore as C, QtWidgets as W
 from .grouping import group_path, path_key, path_label, node_label, field_labels
-from .operations import run_operation
 from .metadata import metadata_search_text, acquisition_timestamp, channel_count
 
 
@@ -161,7 +160,7 @@ class BrowserPanel(W.QWidget):
 
     def _build_filters(self):
         self.browser = DatasetBrowser()
-        self.browser.setMinimumWidth(480)
+        self.browser.setMinimumWidth(300)
         self.browser.setSelectionMode(W.QAbstractItemView.SelectionMode.ExtendedSelection)
         self.browser.setToolTip("Highlight rows to select them; check boxes to show them on the plot.")
         browser_layout = W.QVBoxLayout(self)
@@ -328,8 +327,7 @@ class BrowserPanel(W.QWidget):
         filters = (group, query, self.favorites_filter.isChecked(),
                    self.tag_filter.text().strip().casefold(),
                    self.metadata_filter.text().strip().casefold(), lower, upper)
-        hidden_ids = run_operation(self, 'Filtering datasets',
-            lambda: filter_dataset_ids(self.datasets, *filters))
+        hidden_ids = filter_dataset_ids(self.datasets, *filters)
         with C.QSignalBlocker(self.browser):
             for row in range(self.browser.count()):
                 item = self.browser.item(row)
@@ -397,13 +395,33 @@ class BrowserPanel(W.QWidget):
 
 
 
+_search_text_cache = {}
+
+
+def cached_search_text(d):
+    """Casefolded metadata text, reused while the metadata objects are unchanged.
+
+    Metadata is replaced, not edited, after import; holding the objects keeps
+    their identities valid for the comparison.
+    """
+    entry = _search_text_cache.get(d.id)
+    if entry is None or entry[0] is not d.instrument_metadata or entry[1] is not d.timestamps:
+        entry = (d.instrument_metadata, d.timestamps, metadata_search_text(d).casefold())
+        _search_text_cache[d.id] = entry
+    return entry[2]
+
+
 def filter_dataset_ids(datasets, group, query, favorites, tag, metadata, lower, upper):
     """Compute visibility without Qt access; empty text filters need no indexing."""
     hidden = set()
+    if query or metadata:
+        current = {d.id for d in datasets}
+        for stale in _search_text_cache.keys() - current:
+            del _search_text_cache[stale]
     for d in datasets:
         matches = (group_path(d)[:len(group)] == group if isinstance(group, list)
                    else group is None or d.group == group)
-        text = metadata_search_text(d).casefold() if query or metadata else ''
+        text = cached_search_text(d) if query or metadata else ''
         timestamp = acquisition_timestamp(d)
         date = timestamp[:10] if timestamp else None
         if (not matches

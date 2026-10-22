@@ -4,6 +4,7 @@ from .presets import make_preset, validate_presets, save_presets, load_presets, 
 from PySide6 import QtWidgets as W, QtCore as C
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
+from .screen import fit_to_screen
 from .analysis import analyze, channel_unit, POLICIES
 
 LABELS = {'mean_subtract': 'Subtract mean', 'normalize': 'Normalize',
@@ -18,7 +19,7 @@ class AnalysisDialog(W.QDialog):
         self.on_presets_changed = on_presets_changed or (lambda: None)
         self.dataset = None
         self.setWindowTitle('Analysis pipeline — ' + dataset.name)
-        self.resize(900, 760)
+        fit_to_screen(self, 900, 760)
         layout = W.QVBoxLayout(self)
         preset_controls = W.QHBoxLayout()
         self.preset_choice = W.QComboBox()
@@ -268,7 +269,7 @@ class MultiAnalysisDialog(W.QDialog):
         self.sources = list(datasets)
         self.datasets = []
         self.setWindowTitle('Analysis pipeline — selected datasets')
-        self.resize(950, 800)
+        fit_to_screen(self, 950, 800)
         layout = W.QVBoxLayout(self)
         info = W.QLabel('Uses each dataset’s selected X/Y channels. Channel names and units must match. '
                         'Select channels in the main window before opening this dialog.')
@@ -416,7 +417,7 @@ class BatchPipelineDialog(W.QDialog):
         self.presets = deepcopy(presets)
         self.datasets = []
         self.setWindowTitle('Apply pipeline preset to selected datasets')
-        self.resize(900, 700)
+        fit_to_screen(self, 900, 700)
         layout = W.QVBoxLayout(self)
         self.preset = W.QComboBox()
         self.preset.addItems(list(presets))

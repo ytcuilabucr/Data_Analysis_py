@@ -5,8 +5,10 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 from PySide6 import QtWidgets as W
+from PySide6.QtCore import Qt, QPoint
+from PySide6.QtTest import QTest
 from rogi.core import Dataset
-from rogi.images import raster, contrast_limits, ImageViewer
+from rogi.images import raster, contrast_limits, gamma_value, ImageViewer, RangeSlider
 from rogi.ui import MainWindow
 from rogi.project import save_project
 
@@ -41,6 +43,150 @@ def test_contrast_missing_constant_outliers():
     for mode, lo, hi in [('Manual', 2, 1), ('Manual', np.nan, 2), ('Percentile', -1, 98)]:
         with pytest.raises(ValueError):
             contrast_limits(np.array([1]), mode, lo, hi)
+
+
+def test_range_slider_keeps_min_below_max(app):
+    slider = RangeSlider(100)
+    seen = []
+    slider.valuesChanged.connect(lambda lo, hi: seen.append((lo, hi)))
+    slider.setValues(80, 20)
+    assert slider.values() == (20, 80) and seen == [(20, 80)]
+    slider.setValues(-5, 500)
+    assert slider.values() == (0, 100)
+    slider.active = 0
+    slider.keyPressEvent(SimpleNamespace(key=lambda: Qt.Key.Key_Right))
+    assert slider.values() == (10, 100)
+    slider.setValues(50, 51)
+    slider.keyPressEvent(SimpleNamespace(key=lambda: Qt.Key.Key_Right))
+    assert slider.values() == (50, 51)
+    slider.resize(214, 20)  # 2 px per unit
+    x = lambda v: QPoint(int(slider._x(v)), 10)
+    for start, end, expected in [(51, 70, (50, 70)), (50, 90, (69, 70)), (None, None, (20, 40)),
+                                 (30, 50, (40, 60)), (50, 10, (0, 20)), (95, 95, (0, 95))]:
+        if start is None:
+            slider.setValues(*expected)
+            continue
+        QTest.mousePress(slider, Qt.MouseButton.LeftButton, pos=x(start))
+        QTest.mouseMove(slider, x(end))
+        QTest.mouseRelease(slider, Qt.MouseButton.LeftButton, pos=x(end))
+        assert slider.values() == expected
+    assert slider.grab().width() == 214
+
+
+def test_min_max_brightness_and_gamma_are_display_only(app):
+    viewer = ImageViewer()
+    d = channel()
+    before = d.values.copy()
+    try:
+        viewer.set_context([d], d)
+        artist = next(iter(viewer.panels.values()))[2]
+        assert artist.get_clim() == (-2, 100) and viewer.limits_slider.values() == (0, 1000)
+        viewer.limits_slider.setValues(100, 600)
+        np.testing.assert_allclose(artist.get_clim(), (8.2, 59.2))
+        assert viewer.mode.currentText() == 'Manual' and viewer.low.isEnabled()
+        assert (viewer.low.text(), viewer.high.text()) == ('8.2', '59.2')
+        assert viewer.brightness.value() == 30
+        viewer.brightness.setValue(0)
+        np.testing.assert_allclose(artist.get_clim(), (23.5, 74.5))
+        assert viewer.limits_slider.values() == (250, 750)
+        viewer.gamma.setValue(-50)
+        assert gamma_value(-50) == .5 and artist.norm.gamma == .5
+        assert 'γ = 0.50' in artist.colorbar.ax.get_ylabel()
+        viewer.palette.setCurrentText('gray')
+        np.testing.assert_allclose(artist.get_clim(), (23.5, 74.5))
+        assert artist.norm.gamma == .5
+        state = viewer.snapshot()
+        viewer.reset_adjustment.click()
+        artist = next(iter(viewer.panels.values()))[2]
+        assert viewer.mode.currentText() == 'Full range' and artist.get_clim() == (-2, 100)
+        assert not hasattr(artist.norm, 'gamma') and 'γ' not in artist.colorbar.ax.get_ylabel()
+        viewer.restore_snapshot(state, [d], d)
+        artist = next(iter(viewer.panels.values()))[2]
+        np.testing.assert_allclose(artist.get_clim(), (23.5, 74.5))
+        assert viewer.gamma.value() == -50 and artist.norm.gamma == .5
+        np.testing.assert_array_equal(d.values, before)
+    finally:
+        viewer.close()
+
+
+def test_contrast_and_invert_are_display_only(app):
+    viewer = ImageViewer()
+    d = channel()
+    before = d.values.copy()
+    try:
+        viewer.set_context([d], d)
+        artist = next(iter(viewer.panels.values()))[2]
+        assert artist.get_clim() == (-2, 100) and viewer.contrast.value() == 0
+        viewer.contrast.setValue(50)  # half the data range around the same centre
+        np.testing.assert_allclose(artist.get_clim(), (23.5, 74.5))
+        assert viewer.mode.currentText() == 'Manual' and viewer.limits_slider.values() == (250, 750)
+        viewer.contrast.setValue(-50)
+        np.testing.assert_allclose(artist.get_clim(), (-53, 151))
+        viewer.limits_slider.setValues(250, 750)
+        assert viewer.contrast.value() == 50
+        viewer.invert.setChecked(True)
+        artist = next(iter(viewer.panels.values()))[2]
+        assert artist.get_cmap().name == 'viridis_r'
+        np.testing.assert_allclose(artist.get_clim(), (23.5, 74.5))
+        viewer.palette.setCurrentText('afmhot')
+        assert next(iter(viewer.panels.values()))[2].get_cmap().name == 'afmhot_r'
+        state = viewer.snapshot()
+        viewer.reset_adjustment.click()
+        artist = next(iter(viewer.panels.values()))[2]
+        assert not viewer.invert.isChecked() and artist.get_cmap().name == 'afmhot'
+        assert artist.get_clim() == (-2, 100) and viewer.contrast.value() == 0
+        viewer.restore_snapshot(state, [d], d)
+        artist = next(iter(viewer.panels.values()))[2]
+        assert viewer.invert.isChecked() and artist.get_cmap().name == 'afmhot_r'
+        np.testing.assert_allclose(artist.get_clim(), (23.5, 74.5))
+        np.testing.assert_array_equal(d.values, before)
+    finally:
+        viewer.close()
+
+
+def test_image_preparation_runs_off_gui_thread_and_replays_reentrant_calls(app, monkeypatch):
+    import threading
+    from PySide6.QtCore import QTimer
+    from rogi import images
+    viewer = ImageViewer()
+    d = channel()
+    threads, calls = [], []
+    original = images.prepare_images
+    def slow_prepare(*args):
+        threads.append(threading.current_thread())
+        if len(threads) == 1:
+            threading.Event().wait(.05)
+        return original(*args)
+    monkeypatch.setattr(images, 'prepare_images', slow_prepare)
+    original_render = ImageViewer.render.__wrapped__
+    monkeypatch.setattr(ImageViewer, 'render', images.deferred_while_busy(
+        lambda self, *a, reset=False: (calls.append(reset), original_render(self, *a, reset=reset))[1]))
+    try:
+        # Events delivered during the wait call back into the viewer; they must not nest.
+        QTimer.singleShot(10, lambda: (viewer.render(reset=True), viewer.render()))
+        viewer.set_context([d], d)
+        assert threading.main_thread() not in threads
+        assert calls == [True, True] and not viewer.deferred and not viewer.busy
+        assert next(iter(viewer.panels.values()))[2].get_clim() == (-2, 100)
+    finally:
+        viewer.close()
+
+
+def test_windows_fit_available_screen(app):
+    from rogi.screen import available_area, fit_to_screen
+
+    window = MainWindow()
+    widget = W.QWidget()
+    try:
+        area = available_area(window)
+        assert window.width() <= area.width() and window.height() <= area.height()
+        fit_to_screen(widget, 10 ** 5, 300)
+        assert widget.width() <= area.width() and widget.height() == min(300, area.height())
+        fit_to_screen(widget, 200, 150)
+        assert (widget.width(), widget.height()) == (200, 150)
+    finally:
+        window.close()
+        widget.close()
 
 
 def test_viewer_comparison_zoom_cursor_and_validation(app):

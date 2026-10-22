@@ -4,6 +4,7 @@ from PySide6 import QtWidgets as W
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
 from .maps import assemble_map
+from .screen import fit_to_screen
 from .metadata import metadata_fields
 from .grouping import field_labels
 
@@ -14,7 +15,7 @@ class MapDialog(W.QDialog):
         self.sources = datasets
         self.result = None
         self.setWindowTitle('Assemble spectra into a 2D map')
-        self.resize(1050, 850)
+        fit_to_screen(self, 1050, 850)
         layout = W.QVBoxLayout(self)
         form = W.QFormLayout()
         self.x, self.signal, self.sweep = W.QComboBox(), W.QComboBox(), W.QComboBox()

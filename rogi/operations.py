@@ -52,6 +52,31 @@ def set_editing_enabled(window, enabled):
         window.update_clipboard_actions()
 
 
+def run_in_background(function):
+    """Run short data-only work in a worker while the GUI keeps processing events.
+
+    Unlike run_operation nothing is locked and no dialog is shown, so interactive
+    redraws do not flash the window. Callers must tolerate re-entrant events
+    during the wait (see images.deferred_while_busy).
+    """
+    loop = C.QEventLoop()
+    results, errors = [], []
+    worker = OperationWorker(function)
+    worker.result.connect(results.append)
+    worker.failed.connect(errors.append)
+    worker.finished.connect(loop.quit)
+    try:
+        worker.start()
+        loop.exec()
+        worker.wait()
+    finally:
+        worker.function = None
+        worker.deleteLater()
+    if errors:
+        raise errors[0]
+    return results[0]
+
+
 def run_operation(parent, label, function, *, cancellable=False, cooperative=False):
     """Run data-only work; readonly cancellation discards the completed result.
 

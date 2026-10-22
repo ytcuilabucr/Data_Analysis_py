@@ -89,7 +89,7 @@ def test_large_scan_real_gui_operations_stay_responsive(performance_window, tmp_
 
 
 @pytest.mark.parametrize('pixel_ratio', [1, 2])
-def test_detached_render_matches_sync_pixels_and_keeps_callbacks_on_gui(performance_window, pixel_ratio):
+def test_render_matches_base_canvas_pixels_and_keeps_callbacks_on_gui(performance_window, pixel_ratio):
     w = performance_window
     w.add_dataset(parse_text('x,y\n1,3\n2,5\n3,8'))
     w.canvas._set_device_pixel_ratio(pixel_ratio)
@@ -167,21 +167,6 @@ def test_conversion_cancellation_preserves_destination(performance_window, tmp_p
     assert target.read_bytes() == b'original'
 
 
-def test_render_discards_snapshot_if_resized(performance_window, monkeypatch, app):
-    from rogi import canvas
-    w = performance_window
-    original = canvas.render_snapshot
-    def slow_render(payload, dpi=None):
-        time.sleep(.04)
-        return original(payload, dpi)
-    monkeypatch.setattr(canvas, 'render_snapshot', slow_render)
-    C.QTimer.singleShot(10, lambda: w.figure.set_size_inches(6, 4, forward=False))
-    w.canvas.draw()
-    w.canvas.draw()
-    assert w.canvas.renderer.width == w.figure.bbox.width
-    assert w.canvas.renderer.height == w.figure.bbox.height
-
-
 def test_legacy_project_first_plot_and_metadata_filter(performance_window):
     from pathlib import Path
     from rogi.browser_panel import filter_dataset_ids
@@ -211,3 +196,27 @@ def test_raster_validation_preserves_shuffled_pixels_and_rejects_duplicates():
     duplicate = Dataset('grid', dataset.columns, shuffled)
     with pytest.raises(ValueError, match='duplicate'):
         raster(duplicate)
+
+
+def test_interactive_clicks_do_not_lock_window(performance_window, app):
+    """Selecting datasets and filtering must not toggle the editing lock (flashing)."""
+    w = performance_window
+    w.add_dataset(parse_text('x,y\n1,3\n2,5\n3,8'))
+    w.add_dataset(parse_text('x,y\n1,2\n2,4\n3,6'))
+    app.processEvents()
+    toggles = []
+    class Watch(C.QObject):
+        def eventFilter(self, obj, event):
+            if event.type() == C.QEvent.Type.EnabledChange:
+                toggles.append(obj)
+            return False
+    watch = Watch()
+    w.centralWidget().installEventFilter(watch)
+    for row in (0, 1, 0):
+        w.browser.setCurrentRow(row)
+        w.canvas.draw()
+        app.processEvents()
+    w.search.setText('x')
+    app.processEvents()
+    w.centralWidget().removeEventFilter(watch)
+    assert toggles == []

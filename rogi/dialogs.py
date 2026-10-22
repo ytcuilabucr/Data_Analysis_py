@@ -11,6 +11,7 @@ from .scanfile import bundle_channels
 from .grouping import path_label, path_key, partitions, varying_fields, field_labels, import_destinations
 from .operations import run_operation, Cancelled
 from .browser_panel import populate_group_tree
+from .screen import fit_to_screen
 
 
 class ImportDialog(W.QDialog):
@@ -220,7 +221,7 @@ class MetadataGroupingDialog(W.QDialog):
     def __init__(self, datasets, parent=None, all_datasets=None):
         super().__init__(parent)
         self.setWindowTitle('Group by metadata')
-        self.resize(880, 620)
+        fit_to_screen(self, 880, 620)
         self.selected_files = list(datasets)
         self.all_files = list(all_datasets) if all_datasets is not None else self.selected_files
         self.level_rows = []
@@ -347,7 +348,7 @@ class MetadataDialog(W.QDialog):
     def __init__(self, dataset, parent=None):
         super().__init__(parent)
         self.setWindowTitle(f"Metadata — {dataset.name}")
-        self.resize(900, 620)
+        fit_to_screen(self, 900, 620)
         layout = W.QVBoxLayout(self)
         origin = dataset.instrument_metadata.get('source_dataset_id', 'Not recorded')
         note = W.QLabel(f"Source: {dataset.source or 'Not recorded'}\n"

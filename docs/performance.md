@@ -98,22 +98,15 @@ Seconds are callback wall time; gap is the longest observed interval between
 - Project save and folder conversion run in `OperationWorker`, using the same
   codecs and atomic fsync/replace writers. No data formats or compression
   settings changed. Existing raw arrays remain read-only.
-- Import parsing/bundling and image channel/raster/profile preparation run in
-  workers. Profiling the synthetic open identified repeated million-pixel raster
-  validation for cursor profiles; those computations also moved off the GUI
-  thread. Image channel views are reused rather than duplicated for the current
+- Import parsing/bundling runs in a worker. Profiling the synthetic open
+  identified repeated million-pixel raster validation for cursor profiles. Image channel views are reused rather than duplicated for the current
   file. Four million-pixel uniqueness checks measured 407 ms with
   `np.unique` versus 10 ms counting bounded pixel hits; raster validation now
   uses the equivalent count check, tested against shuffled and duplicate grids.
-- Main line/image display rendering uses a detached, full-resolution Agg figure
-  in a worker. Qt widgets and live figure updates remain on the GUI thread.
-  No points are dropped or downsampled. The renderer, axes positions and draw
-  callbacks are published on the GUI thread. Resized stale snapshots are
-  discarded; physical DPI is preserved for Retina displays.
 - A second full benchmark exposed a remaining legacy first-plot pause. Profiling
   found metadata search-text construction for 488 datasets, twice per dataset,
   even with empty filters. Empty filters now skip that construction, and active
-  metadata filtering runs in a worker. Dataset ID lookup also reads the Qt item
+  metadata filtering reuses cached search text. Dataset ID lookup also reads the Qt item
   once rather than on every iteration of its dataset lookup.
 
 Workers share the fit editing lock (central widgets, project/edit/view actions,
@@ -126,21 +119,49 @@ the atomic-write boundary. Native reads cannot be forcibly
 interrupted. Once atomic writing begins it finishes; saves have no Cancel button.
 Errors still reach the existing GUI error handlers. No worker is terminated.
 
+## Revision 2026-10-22: interactive paths back on the GUI thread
+
+The first version also routed plot rendering, browser filtering and image
+channel/raster/profile preparation through `run_operation`. Those run on almost
+every click or keystroke, and each call took the editing lock: the whole window
+was disabled and re-enabled (6 lock toggles per dataset click, 6 per search
+keystroke), which flashed the UI and swallowed input during a nested event loop.
+The benchmark did not catch this because it measured timer gaps, not lock churn.
+
+Those paths are synchronous again; workers are kept for file reads, imports,
+conversion and saves. A test now asserts that dataset clicks and filtering never
+toggle the lock. The underlying costs were reduced instead: legend placement
+`'best'` falls back to the upper right above 100 000 plotted points (it scanned
+every point, ~0.5 s per draw on the synthetic scan), metadata search text is
+cached per dataset, and opening a project redraws once instead of six times.
+A dataset click with redraw on the synthetic scan measures ~85 ms. Opening the
+synthetic scan after conversion still blocked the GUI thread for ~240 ms once,
+above the 200 ms criterion.
+
+Image channel views, raster/contrast preparation and cursor profiles (~90 ms of
+that open) now run through `run_in_background`: a worker with a local event
+loop that takes no editing lock and shows no dialog, so it cannot flash the
+window. Calls back into the image viewer that arrive during the wait are
+deferred and replayed (latest per method). All canvas draws are held during the
+wait and issued once afterwards; without this, every wait rendered the queued
+plot and the next change rendered it again (55 draws instead of 2 in one test).
+The conversion-and-open gap now measures ~120 ms; the remainder is mostly
+Matplotlib drawing the million-pixel image on the GUI thread.
+
 ## Verification and limits
 
-The full suite passes **322 tests**. Added offscreen tests bound real synthetic
-import, conversion-and-open, save, open and redraw timer gaps below 200 ms; a
+The suite has **327 tests**, all passing. Offscreen tests bound
+real synthetic import, conversion-and-open, save, open and redraw timer gaps below 200 ms; a
 local legacy-project test covers first plot and metadata search. Additional
 checks compare imported/loaded/saved values and metadata to synchronous paths,
 check raw immutability, compare rendered RGBA pixels with the original synchronous
 Qt/Agg path at 1× and 2× pixel ratios, verify GUI-thread draw callbacks, exercise
-resize during rendering, cancellation and editing/close locks, and inject atomic
+cancellation and editing/close locks, and inject atomic
 replace failures for **both HDF5 and JSON** while checking that the original file
 and dirty state survive and temporary files are removed.
 
 Responsiveness is the primary improvement: worker execution does not make every
-operation faster. Detached rendering needs transient copies and can increase
-peak RSS, particularly for the synthetic scan. Projects remain fully in memory.
+operation faster. Projects remain fully in memory.
 The measured bound is a regression criterion on these workloads and this machine,
 not a guarantee for arbitrary input sizes or overloaded hardware. Qt widget and
 artist assembly still run on the GUI thread; other analysis dialogs and plot-file

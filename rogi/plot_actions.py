@@ -13,6 +13,9 @@ from .core import region_statistics
 from .plotting import display_values
 from .history import ChangeCommand
 
+# Above this many plotted points, legend placement "best" falls back to a fixed corner.
+BEST_LEGEND_POINTS = 100_000
+
 
 def panel_datasets(self, panel):
     if panel['channels'] is None:
@@ -350,6 +353,8 @@ def plot_tab_changed(self, index):
 
 
 def redraw(self):
+    if getattr(self, 'redraw_deferred', False):
+        return  # open_project redraws once after restoring the whole view.
     self.image_viewer.set_context(self.datasets, self.current())
     self.drawing = True
     try:
@@ -509,7 +514,11 @@ def _apply_plot_axes(self):
     for axes in (self.ax, self.resax):
         axes.grid(True, alpha=0.2)
         if axes.get_legend_handles_labels()[0] and self.legend_position.currentText() != 'hidden':
-            axes.legend(fontsize=8, loc=self.legend_position.currentText())
+            loc = self.legend_position.currentText()
+            # 'best' scans every plotted point on each draw (~0.5 s for a 1M-point scan).
+            if loc == 'best' and sum(len(line.get_xdata()) for line in axes.get_lines()) > BEST_LEGEND_POINTS:
+                loc = 'upper right'
+            axes.legend(fontsize=8, loc=loc)
     # Interactive artists must not participate in automatic data limits.
     # Automatic ranges are recomputed explicitly on the next redraw.
     for axes in (self.ax, self.resax):

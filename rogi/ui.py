@@ -21,6 +21,7 @@ from .browser_panel import BrowserPanel, BrowserState, BrowserItem, DatasetBrows
 from .plot_controls_panel import PlotControlsPanel
 from .fitting_panel import FittingPanel, FitWorker
 from . import project_actions as project_commands
+from .screen import fit_to_screen
 from .dialogs import ImportDialog, SpmImportDialog, ImportGroupDialog, MetadataGroupingDialog, MetadataDialog
 from . import dataset_actions
 from .table_actions import DataTable
@@ -99,7 +100,7 @@ class MainWindow(W.QMainWindow):
         self.stats_region = None
         self.stats_context = None
         self.setWindowTitle("Rogi — Scientific Analysis")
-        self.resize(1280, 850)
+        fit_to_screen(self)
         self.history = G.QUndoStack(self)
 
     def _build_menus(self):
@@ -170,7 +171,7 @@ class MainWindow(W.QMainWindow):
         self.analysis_panel = panel_scroll
         panel_scroll.setWidgetResizable(True)
         panel_scroll.setWidget(panel)
-        panel_scroll.setMinimumWidth(380)
+        panel_scroll.setMinimumWidth(300)
         panel_scroll.setMaximumWidth(400)
         splitter.addWidget(panel_scroll)
         splitter.setSizes([420, 680, 380])
@@ -627,6 +628,7 @@ def main():
     app = W.QApplication.instance() or W.QApplication(sys.argv)
     window = MainWindow()
     window.show()
+    fit_to_screen(window)  # actual frame margins are known once shown
     C.QTimer.singleShot(0, window.suggest_recent_project)
     sys.exit(app.exec())
 

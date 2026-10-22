@@ -38,7 +38,7 @@ def _validate_saved_views(views):
                 if type(state[key]) is not int or state[key] < 0:
                     raise ValueError('Invalid saved channel.')
         image = view['image']
-        if image['palette'] not in ('viridis', 'gray', 'inferno', 'magma', 'cividis', 'coolwarm'):
+        if image['palette'] not in ('viridis', 'gray', 'afmhot', 'inferno', 'magma', 'plasma', 'cividis', 'coolwarm'):
             raise ValueError('Invalid saved image palette.')
         if image['mode'] not in ('Full range', 'Percentile', 'Manual'):
             raise ValueError('Invalid saved image contrast.')
@@ -49,6 +49,10 @@ def _validate_saved_views(views):
             raise ValueError('Invalid saved image limits.')
         if image['mode'] == 'Percentile' and not 0 <= low < high <= 100:
             raise ValueError('Invalid saved percentiles.')
+        if type(image.get('gamma', 0)) is not int or not -100 <= image.get('gamma', 0) <= 100:
+            raise ValueError('Invalid saved image gamma.')
+        if not isinstance(image.get('invert', False), bool):
+            raise ValueError('Invalid saved image color inversion.')
         if image['compare'] is not None and not isinstance(image['compare'], str):
             raise ValueError('Invalid image comparison ID.')
         if not isinstance(image['channels'], dict) or not all(

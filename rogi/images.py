@@ -1,18 +1,22 @@
 """Non-destructive raster presentation for imported SPM channel tables."""
-from .operations import run_operation
+from .operations import run_in_background
 from .spatial import image_geometry
+from functools import wraps
 from .scanfile import channel_views
 import textwrap
 from copy import deepcopy
 from .core import Dataset, export_data
 from pathlib import Path
 import numpy as np
-from PySide6 import QtCore as C, QtWidgets as W
+from PySide6 import QtCore as C, QtGui as G, QtWidgets as W
+from matplotlib.colors import Normalize, PowerNorm
 from matplotlib.figure import Figure
 from matplotlib.patches import Rectangle
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from .navigation import PlotNavigationToolbar
-from .canvas import ResponsiveCanvas as FigureCanvasQTAgg
+from .canvas import ResponsiveCanvas as FigureCanvasQTAgg, hold_draws
+
+PALETTES = ('viridis', 'gray', 'afmhot', 'inferno', 'magma', 'plasma', 'cividis', 'coolwarm')
 
 
 def is_image(dataset):
@@ -74,6 +78,134 @@ def contrast_limits(values, mode, lower=2, upper=98):
     return float(lo), float(hi)
 
 
+def gamma_value(position):
+    """Map a −100…100 slider position to γ = 0.25…4 (log scale, 0 → linear)."""
+    return 2 ** (position / 50)
+
+
+def deferred_while_busy(method):
+    """Replay calls that arrive while the viewer waits on background preparation.
+
+    The wait processes GUI events, so a click or drag may call back into the
+    viewer; only the latest call per method runs, after the current one finishes.
+    """
+    @wraps(method)
+    def wrapper(self, *args, **kwargs):
+        if self.busy:
+            previous = next((c for c in self.deferred if c[0] is method), None)
+            if previous is not None:
+                self.deferred.remove(previous)
+                if 'reset' in previous[2]:
+                    kwargs['reset'] = kwargs.get('reset', False) or previous[2]['reset']
+            self.deferred.append((method, args, kwargs))
+            return None
+        result = method(self, *args, **kwargs)
+        while not self.busy and self.deferred:
+            queued, queued_args, queued_kwargs = self.deferred.pop(0)
+            queued(self, *queued_args, **queued_kwargs)
+        return result
+    return wrapper
+
+
+def contrast_width(position, span):
+    """Map a −100…100 slider position to a color window of span × 4…¼ (0 → full data range)."""
+    return span * 2 ** (-position / 50)
+
+
+def display_norm(lo, hi, gamma=1.):
+    return Normalize(lo, hi) if gamma == 1 else PowerNorm(gamma, lo, hi)
+
+
+class RangeSlider(W.QWidget):
+    """Horizontal slider with independent minimum and maximum handles (integer units 0…maximum)."""
+    valuesChanged = C.Signal(int, int)
+    radius = 7
+
+    def __init__(self, maximum=1000, parent=None):
+        super().__init__(parent)
+        self.maximum, self._values, self.dragging, self.active = maximum, [0, maximum], None, 1
+        self.setFocusPolicy(C.Qt.FocusPolicy.StrongFocus)
+        self.setMinimumSize(120, 2 * self.radius + 6)
+        self.setSizePolicy(W.QSizePolicy.Policy.Expanding, W.QSizePolicy.Policy.Fixed)
+
+    def values(self):
+        return tuple(self._values)
+
+    def setValues(self, lo, hi):
+        lo, hi = sorted(min(max(int(round(v)), 0), self.maximum) for v in (lo, hi))
+        if [lo, hi] != self._values:
+            self._values = [lo, hi]
+            self.update()
+            self.valuesChanged.emit(lo, hi)
+
+    def _x(self, value):
+        return self.radius + value * (self.width() - 2 * self.radius) / self.maximum
+
+    def _value(self, x):
+        return round((x - self.radius) * self.maximum / max(self.width() - 2 * self.radius, 1))
+
+    def paintEvent(self, event):
+        painter = G.QPainter(self)
+        painter.setRenderHint(G.QPainter.RenderHint.Antialiasing)
+        palette, y = self.palette(), self.height() / 2
+        x0, x1 = (self._x(v) for v in self._values)
+        painter.setPen(G.QPen(palette.color(G.QPalette.ColorRole.Mid), 4))
+        painter.drawLine(C.QPointF(self.radius, y), C.QPointF(self.width() - self.radius, y))
+        painter.setPen(G.QPen(palette.color(G.QPalette.ColorRole.Highlight), 4))
+        painter.drawLine(C.QPointF(x0, y), C.QPointF(x1, y))
+        for i, x in enumerate((x0, x1)):
+            focused = self.hasFocus() and i == self.active
+            painter.setPen(G.QPen(palette.color(G.QPalette.ColorRole.Highlight if focused else G.QPalette.ColorRole.Dark), 1.5))
+            painter.setBrush(palette.color(G.QPalette.ColorRole.Button))
+            painter.drawEllipse(C.QPointF(x, y), self.radius, self.radius)
+
+    def mousePressEvent(self, event):
+        x = event.position().x()
+        lo, hi = (self._x(v) for v in self._values)
+        distances = abs(x - lo), abs(x - hi)
+        if min(distances) <= self.radius + 2:
+            # Coincident handles: pick the one that can move in the pointer's direction later.
+            self.dragging = self.active = int(distances[1] < distances[0] or (lo == hi and x > hi))
+        elif lo < x < hi:
+            self.dragging = ('both', self._value(x), self.values())
+        else:
+            self.dragging = self.active = int(x > hi)
+            self.mouseMoveEvent(event)
+
+    def mouseMoveEvent(self, event):
+        if self.dragging is None:
+            return
+        value = self._value(event.position().x())
+        lo, hi = self._values
+        if isinstance(self.dragging, tuple):
+            _, start, (lo, hi) = self.dragging
+            shift = min(max(value - start, -lo), self.maximum - hi)
+            self.setValues(lo + shift, hi + shift)
+        elif self.dragging == 0:
+            self.setValues(min(value, hi - 1), hi)
+        else:
+            self.setValues(lo, max(value, lo + 1))
+
+    def mouseReleaseEvent(self, event):
+        self.dragging = None
+
+    def keyPressEvent(self, event):
+        step = {C.Qt.Key.Key_Left: -10, C.Qt.Key.Key_Down: -10, C.Qt.Key.Key_Right: 10, C.Qt.Key.Key_Up: 10}.get(event.key())
+        if event.key() == C.Qt.Key.Key_Tab and not self.active:
+            self.active = 1
+            self.update()
+        elif event.key() == C.Qt.Key.Key_Backtab and self.active:
+            self.active = 0
+            self.update()
+        elif step is None:
+            super().keyPressEvent(event)
+        else:
+            values = list(self._values)
+            values[self.active] += step
+            if values[0] < values[1]:
+                self.setValues(*values)
+
+
 def extract_profile(dataset, axis, index, parent=None):
     """Extract along original X or Y at a pixel centre without interpolation."""
     array = raster(dataset)
@@ -119,38 +251,78 @@ class ImageViewer(W.QWidget):
         self.region_patch = None
         self.cut_axes = None
         self.drag_axis = None
+        self.busy, self.deferred = 0, []
         layout = W.QVBoxLayout(self)
         layout.setContentsMargins(6, 6, 6, 6)
         layout.setSpacing(5)
         controls = W.QHBoxLayout()
         self.palette = W.QComboBox()
-        self.palette.addItems(['viridis', 'gray', 'inferno', 'magma', 'cividis', 'coolwarm'])
+        self.palette.addItems(PALETTES)
         self.palette.setAccessibleName('Image color palette')
+        self.invert = W.QCheckBox('Invert')
+        self.invert.setAccessibleName('Invert image colors')
+        self.invert.setToolTip('Reverse the color palette.')
         self.mode = W.QComboBox()
         self.mode.addItems(['Full range', 'Percentile', 'Manual'])
-        self.mode.setAccessibleName('Image contrast mode')
+        self.mode.setAccessibleName('Image color range mode')
         self.low = W.QLineEdit('2')
         self.high = W.QLineEdit('98')
         for widget, name in ((self.low, 'Lower image contrast limit'), (self.high, 'Upper image contrast limit')):
             widget.setMaximumWidth(85)
             widget.setAccessibleName(name)
         self.apply = W.QPushButton('Apply')
-        for widget in (W.QLabel('Colors'), self.palette, W.QLabel('Contrast'), self.mode,
+        for widget in (W.QLabel('Colors'), self.palette, self.invert, W.QLabel('Range'), self.mode,
                        W.QLabel('Low'), self.low, W.QLabel('High'), self.high, self.apply):
             controls.addWidget(widget)
         controls.addStretch()
         layout.addLayout(controls)
+        adjust_row = W.QHBoxLayout()
+        # Slider positions map onto the current map's finite data range.
+        self.span = (0., 1.)
+        self.limits_slider = RangeSlider()
+        self.limits_slider.setAccessibleName('Image color minimum and maximum')
+        self.limits_slider.setToolTip('Drag the left/right handles to set the color minimum/maximum, or drag between '
+                                      'them to move both. Spans the data range; switches Range to Manual.')
+        self.limits_slider.valuesChanged.connect(self.limits_dragged)
+        self.brightness = W.QSlider(C.Qt.Orientation.Horizontal)
+        self.brightness.setRange(-100, 100)
+        self.brightness.setAccessibleName('Image brightness')
+        self.brightness.setToolTip('Moves the color minimum and maximum together; switches Range to Manual.')
+        self.brightness.valueChanged.connect(self.brightness_dragged)
+        self.contrast = W.QSlider(C.Qt.Orientation.Horizontal)
+        self.contrast.setRange(-100, 100)
+        self.contrast.setAccessibleName('Image contrast')
+        self.contrast.setToolTip('Narrows (right) or widens (left) the color minimum–maximum window around its '
+                                 'centre; the middle position spans the data range. Switches Range to Manual.')
+        self.contrast.valueChanged.connect(self.contrast_dragged)
+        self.gamma = W.QSlider(C.Qt.Orientation.Horizontal)
+        self.gamma.setRange(-100, 100)
+        self.gamma.setAccessibleName('Image gamma')
+        self.gamma.setToolTip('Nonlinear color mapping between minimum and maximum: γ < 1 reveals low values, '
+                              'γ > 1 reveals high values. The color bar shows γ when it is not 1.')
+        self.gamma.valueChanged.connect(self.gamma_changed)
+        self.gamma_label = W.QLabel()
+        self.gamma_label.setMinimumWidth(52)
+        self.reset_adjustment = W.QPushButton('Reset')
+        self.reset_adjustment.setToolTip('Return to Full range with γ = 1 and uninverted colors.')
+        self.reset_adjustment.clicked.connect(self.reset_display)
+        for widget, stretch in ((W.QLabel('Min/Max'), 0), (self.limits_slider, 2), (W.QLabel('Brightness'), 0),
+                                (self.brightness, 1), (W.QLabel('Contrast'), 0), (self.contrast, 1), (W.QLabel('Gamma'), 0), (self.gamma, 1),
+                                (self.gamma_label, 0), (self.reset_adjustment, 0)):
+            adjust_row.addWidget(widget, stretch)
+        layout.addLayout(adjust_row)
+        self.gamma_label.setText('γ 1.00')
         channel_row = W.QHBoxLayout()
         self.channel = W.QComboBox()
         self.channel.setAccessibleName('2D map channel')
-        self.channel.setMinimumContentsLength(25)
+        self.channel.setMinimumContentsLength(14)
         self.channel.setSizeAdjustPolicy(W.QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
         channel_row.addWidget(W.QLabel('Channel'))
         channel_row.addWidget(self.channel, 1)
         comparison = channel_row
         self.compare = W.QComboBox()
         self.compare.setAccessibleName('Compare image channel')
-        self.compare.setMinimumContentsLength(25)
+        self.compare.setMinimumContentsLength(14)
         self.compare.setSizeAdjustPolicy(W.QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
         comparison.addWidget(W.QLabel('Compare with'))
         comparison.addWidget(self.compare, 1)
@@ -173,13 +345,14 @@ class ImageViewer(W.QWidget):
         self.profile_axis.addItems(['X profile', 'Y profile'])
         self.export_profile_button = W.QPushButton('Export profile CSV…')
         self.create_profile_button = W.QPushButton('Create profile dataset')
-        for widget in (self.transpose, self.cursor_choice, self.profile_axis, self.export_profile_button, self.create_profile_button):
+        for widget in (self.cursor_choice, self.profile_axis, self.export_profile_button, self.create_profile_button):
             profile_row.addWidget(widget)
         layout.addLayout(profile_row)
         region_row = W.QHBoxLayout()
         self.select_region = W.QCheckBox('Select rectangle between cursors')
         self.create_region_button = W.QPushButton('Create region dataset')
         self.region_summary = W.QLabel()
+        region_row.addWidget(self.transpose)
         region_row.addWidget(self.select_region)
         region_row.addWidget(self.create_region_button)
         region_row.addWidget(self.region_summary, 1)
@@ -219,6 +392,7 @@ class ImageViewer(W.QWidget):
         self.canvas.mpl_connect('button_release_event', self.release)
         self.channel.currentIndexChanged.connect(self.select_channel)
         self.palette.currentTextChanged.connect(self.render)
+        self.invert.toggled.connect(self.render)
         self.compare.currentIndexChanged.connect(lambda: self.render(reset=True))
         self.mode.currentTextChanged.connect(self.mode_changed)
         self.apply.clicked.connect(self.render)
@@ -241,12 +415,15 @@ class ImageViewer(W.QWidget):
             self.preview_buttons.addWidget(button)
         self.preview_buttons.addStretch()
 
-    def mode_changed(self, *args):
-        mode = self.mode.currentText()
+    def limit_fields(self, mode):
         self.low.setToolTip('Lower percentile (0–100)' if mode == 'Percentile' else 'Minimum displayed signal value')
         self.high.setToolTip('Upper percentile (0–100)' if mode == 'Percentile' else 'Maximum displayed signal value')
         self.low.setEnabled(mode != 'Full range')
         self.high.setEnabled(mode != 'Full range')
+
+    def mode_changed(self, *args):
+        mode = self.mode.currentText()
+        self.limit_fields(mode)
         if mode == 'Percentile':
             self.low.setText('2')
             self.high.setText('98')
@@ -256,14 +433,22 @@ class ImageViewer(W.QWidget):
             self.high.setText(f'{limits[1]:.12g}')
         self.render()
 
+    def background(self, function):
+        self.busy += 1
+        try:
+            with hold_draws():
+                return run_in_background(function)
+        finally:
+            self.busy -= 1
+
+    @deferred_while_busy
     def set_context(self, datasets, current):
         signature = (current.id if current else None,
                      tuple((d.id, d.revision, d.name, tuple(d.columns)) for d in datasets))
         if signature == self.signature:
             return
         self.signature = signature
-        self.datasets, self.file_channels = run_operation(self, "Preparing image channels",
-            lambda: image_channels(datasets, current))
+        self.datasets, self.file_channels = self.background(lambda: image_channels(datasets, current))
         self.file_current = current
         choice = self.channel_choices.get(current.id) if current else None
         if choice is None and current is not None:
@@ -295,6 +480,7 @@ class ImageViewer(W.QWidget):
                                 if self.compare.count() > 1 else 'No other matching channels in this file type.')
         self.render(reset=old_current != (self.current.id if self.current else None))
 
+    @deferred_while_busy
     def render(self, *args, reset=False):
         self.drag_axis = None
         self.export_profile_button.setEnabled(False)
@@ -317,8 +503,7 @@ class ImageViewer(W.QWidget):
         try:
             mode = self.mode.currentText()
             lo, hi = (float(self.low.text()), float(self.high.text())) if mode != 'Full range' else (0, 100)
-            arrays, limits, geometries = run_operation(self, "Preparing images",
-                lambda: prepare_images(selected, mode, lo, hi))
+            arrays, limits, geometries = self.background(lambda: prepare_images(selected, mode, lo, hi))
             if self.transpose.isChecked():
                 arrays = [a.T for a in arrays]
                 geometries = [((e[2], e[3], e[0], e[1]), yl, xl) for e, xl, yl in geometries]
@@ -339,8 +524,9 @@ class ImageViewer(W.QWidget):
         if same:
             for (d, old, artist), array, clim in zip(existing, arrays, limits):
                 artist.set_data(np.ma.masked_invalid(array))
-                artist.set_cmap(self.palette.currentText())
-                artist.set_clim(*clim)
+                artist.set_cmap(self.cmap())
+                artist.set_norm(self.norm(*clim))
+                artist.colorbar.set_label(self.colorbar_label(d))
                 artist.axes.set_title(textwrap.fill(d.name, 38), fontsize=9)
                 self.panels[artist.axes] = (d, array, artist)
         else:
@@ -351,7 +537,7 @@ class ImageViewer(W.QWidget):
             for ax, d, array, clim, geometry in zip(axes, selected, arrays, limits, geometries):
                 extent, xlabel, ylabel = geometry
                 artist = ax.imshow(np.ma.masked_invalid(array), origin='lower', interpolation='nearest',
-                                   cmap=self.palette.currentText(), vmin=clim[0], vmax=clim[1], aspect='equal', extent=extent)
+                                   cmap=self.cmap(), norm=self.norm(*clim), aspect='equal', extent=extent)
                 ax.set_title(textwrap.fill(d.name, 38), fontsize=9)
                 ax.set_xlabel(xlabel)
                 ax.set_ylabel(ylabel)
@@ -363,10 +549,11 @@ class ImageViewer(W.QWidget):
                     below.tick_params(axis='x', labelsize=8)
                     right.tick_params(axis='y', labelleft=False)
                 cax = divider.append_axes('right', size='4%', pad=.55)
-                self.figure.colorbar(artist, cax=cax, orientation='vertical', label=('Raw counts' if d.columns[3].endswith('(raw counts)')
-                                            else textwrap.fill(d.columns[3], 20)))
+                self.figure.colorbar(artist, cax=cax, orientation='vertical', label=self.colorbar_label(d))
                 self.panels[ax] = (d, array, artist)
             self.navigation.update()
+        self.span = contrast_limits(arrays[0], 'Full range')
+        self.sync_adjusters(*limits[0])
         self.update_profiles()
         self.message.setText(' · '.join(f'Map {i}: {a.shape[1]} × {a.shape[0]} pixels, '
                                        f'{np.count_nonzero(~np.isfinite(a))} missing'
@@ -374,9 +561,83 @@ class ImageViewer(W.QWidget):
         self.readout.setText('Move the pointer over a pixel to inspect its value.')
         self.canvas.draw_idle()
 
+    def cmap(self):
+        return self.palette.currentText() + ('_r' if self.invert.isChecked() else '')
+
+    def norm(self, lo, hi):
+        return display_norm(lo, hi, gamma_value(self.gamma.value()))
+
+    def colorbar_label(self, d):
+        label = 'Raw counts' if d.columns[3].endswith('(raw counts)') else textwrap.fill(d.columns[3], 20)
+        gamma = gamma_value(self.gamma.value())
+        return label if gamma == 1 else f'{label} (γ = {gamma:.2f})'
+
+    def sync_adjusters(self, lo, hi):
+        """Show limits on the sliders without feeding the change back."""
+        s0, s1 = self.span
+        with C.QSignalBlocker(self.limits_slider):
+            self.limits_slider.setValues(*((v - s0) / (s1 - s0) * self.limits_slider.maximum for v in (lo, hi)))
+        with C.QSignalBlocker(self.brightness):
+            self.brightness.setValue(round(100 - 200 * ((lo + hi) / 2 - s0) / (s1 - s0)))
+        with C.QSignalBlocker(self.contrast):
+            self.contrast.setValue(round(-50 * np.log2((hi - lo) / (s1 - s0))))
+
+    def set_window(self, lo, hi):
+        # Slider drags only change the color mapping, so avoid re-rasterizing on every step.
+        with C.QSignalBlocker(self.mode):
+            self.mode.setCurrentText('Manual')
+        self.limit_fields('Manual')
+        self.low.setText(f'{lo:.6g}')
+        self.high.setText(f'{hi:.6g}')
+        for _, _, artist in self.panels.values():
+            artist.set_clim(lo, hi)
+        self.canvas.draw_idle()
+
+    def limits_dragged(self, lo, hi):
+        if self.panels:
+            s0, s1 = self.span
+            self.set_window(*(s0 + v / self.limits_slider.maximum * (s1 - s0) for v in (lo, hi)))
+            with C.QSignalBlocker(self.brightness):
+                self.brightness.setValue(round(100 - (lo + hi) / self.limits_slider.maximum * 100))
+            with C.QSignalBlocker(self.contrast):
+                self.contrast.setValue(round(-50 * np.log2((hi - lo) / self.limits_slider.maximum)))
+
+    def brightness_dragged(self, value):
+        if self.panels:
+            (s0, s1), (lo, hi) = self.span, next(iter(self.panels.values()))[2].get_clim()
+            centre = s0 + (s1 - s0) * (.5 - value / 200)
+            self.set_window(centre - (hi - lo) / 2, centre + (hi - lo) / 2)
+            self.sync_adjusters(*next(iter(self.panels.values()))[2].get_clim())
+
+    def contrast_dragged(self, value):
+        if self.panels:
+            (s0, s1), (lo, hi) = self.span, next(iter(self.panels.values()))[2].get_clim()
+            centre, half = (lo + hi) / 2, contrast_width(value, s1 - s0) / 2
+            self.set_window(centre - half, centre + half)
+            self.sync_adjusters(centre - half, centre + half)
+
+    def gamma_changed(self, *args):
+        self.gamma_label.setText(f'γ {gamma_value(self.gamma.value()):.2f}')
+        for d, _, artist in self.panels.values():
+            artist.set_norm(self.norm(*artist.get_clim()))
+            artist.colorbar.set_label(self.colorbar_label(d))
+        self.canvas.draw_idle()
+
+    def reset_display(self):
+        with C.QSignalBlocker(self.gamma):
+            self.gamma.setValue(0)
+        with C.QSignalBlocker(self.invert):
+            self.invert.setChecked(False)
+        self.gamma_label.setText('γ 1.00')
+        if self.mode.currentText() == 'Full range':
+            self.render()
+        else:
+            self.mode.setCurrentText('Full range')
+
     def snapshot(self):
         return dict(palette=self.palette.currentText(), mode=self.mode.currentText(),
-                    low=self.low.text(), high=self.high.text(), compare=self.compare.currentData(),
+                    low=self.low.text(), high=self.high.text(),
+                    gamma=self.gamma.value(), invert=self.invert.isChecked(), compare=self.compare.currentData(),
                     channels=dict(self.channel_choices), transpose=self.transpose.isChecked(),
                     cursor_positions=deepcopy(self.cursor_positions),
                     second_positions=deepcopy(self.second_positions),
@@ -398,6 +659,11 @@ class ImageViewer(W.QWidget):
         for widget, value in ((self.palette, state['palette']), (self.mode, state['mode'])):
             with C.QSignalBlocker(widget):
                 widget.setCurrentText(value)
+        with C.QSignalBlocker(self.gamma):
+            self.gamma.setValue(state.get('gamma', 0))
+        with C.QSignalBlocker(self.invert):
+            self.invert.setChecked(state.get('invert', False))
+        self.gamma_label.setText(f'γ {gamma_value(self.gamma.value()):.2f}')
         self.low.setText(str(state['low']))
         self.high.setText(str(state['high']))
         self.low.setEnabled(state['mode'] != 'Full range')
@@ -477,26 +743,30 @@ class ImageViewer(W.QWidget):
             ax.add_patch(self.region_patch)
         self.canvas.draw_idle()
 
+    @deferred_while_busy
     def update_profiles(self):
+        ax, (d, displayed, artist) = next(iter(self.panels.items()))
+        array = displayed.T if self.transpose.isChecked() else displayed
+        cursors = []
+        for number, positions in enumerate((self.cursor_positions, self.second_positions)):
+            default = (array.shape[1] // 2, array.shape[0] // 2) if number == 0 else (array.shape[1] // 4, array.shape[0] // 4)
+            x, y = positions.get(d.id, default)
+            x, y = min(max(x, 0), array.shape[1]-1), min(max(y, 0), array.shape[0]-1)
+            positions[d.id] = [x, y]
+            cursors.append((x, y))
+        # Extract before touching the figure: events processed during the wait may draw it.
+        extracted = self.background(lambda: [[extract_profile(d, 'X', y), extract_profile(d, 'Y', x)]
+                                             for x, y in cursors])
         for line in self.cursor_lines + self.cursor_markers:
             if line.axes is not None:
                 line.remove()
         self.cursor_lines, self.cursor_markers = [], []
-        ax, (d, displayed, artist) = next(iter(self.panels.items()))
-        array = displayed.T if self.transpose.isChecked() else displayed
         below, right = self.cut_axes
         # Remove curves without clearing the shared spatial axes or their zoom.
         for pax in self.cut_axes:
             for line in list(pax.lines):
                 line.remove()
-        for number, (positions, marker, color) in enumerate(zip(
-                (self.cursor_positions, self.second_positions), ('s', 'o'), ('#00a8b5', '#e87800'))):
-            default = (array.shape[1] // 2, array.shape[0] // 2) if number == 0 else (array.shape[1] // 4, array.shape[0] // 4)
-            x, y = positions.get(d.id, default)
-            x, y = min(max(x, 0), array.shape[1]-1), min(max(y, 0), array.shape[0]-1)
-            positions[d.id] = [x, y]
-            profiles = run_operation(self, 'Preparing image profiles',
-                lambda: [extract_profile(d, 'X', y), extract_profile(d, 'Y', x)])
+        for (x, y), profiles, marker, color in zip(cursors, extracted, ('s', 'o'), ('#00a8b5', '#e87800')):
             xc, yc = profiles[0].values[x, 0], profiles[1].values[y, 0]
             if self.transpose.isChecked():
                 xc, yc = yc, xc
