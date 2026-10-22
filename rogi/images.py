@@ -15,8 +15,7 @@ from matplotlib.patches import Rectangle
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from .navigation import PlotNavigationToolbar
 from .canvas import ResponsiveCanvas as FigureCanvasQTAgg, hold_draws
-
-PALETTES = ('viridis', 'gray', 'afmhot', 'inferno', 'magma', 'plasma', 'cividis', 'coolwarm')
+from .presets import PALETTES
 
 
 def is_image(dataset):
@@ -633,6 +632,12 @@ class ImageViewer(W.QWidget):
             self.render()
         else:
             self.mode.setCurrentText('Full range')
+
+    def display_settings(self):
+        """Current colors as portable preset values (brightness/contrast relative to the data range)."""
+        return dict(palette=self.palette.currentText(), invert=self.invert.isChecked(),
+                    brightness=self.brightness.value(), contrast=self.contrast.value(),
+                    gamma=round(gamma_value(self.gamma.value()), 2))
 
     def snapshot(self):
         return dict(palette=self.palette.currentText(), mode=self.mode.currentText(),

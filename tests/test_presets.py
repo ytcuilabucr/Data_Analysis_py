@@ -5,7 +5,7 @@ import pytest
 from rogi.analysis import analyze
 from rogi.analysis_ui import AnalysisDialog, BatchPipelineDialog
 from rogi.core import Dataset
-from rogi.presets import make_preset, save_presets, load_presets, apply_preset
+from rogi.presets import make_preset, save_presets, load_presets, apply_preset, validate_presets, display_limits
 from rogi.project import save_project, load_project
 from rogi.ui import MainWindow
 
@@ -161,3 +161,64 @@ def test_legacy_and_invalid_project_presets(tmp_path):
     path.write_text(json.dumps(payload))
     with pytest.raises(ValueError):
         load_project(path)
+
+
+def display(**changes):
+    return dict(dict(palette='afmhot', invert=True, brightness=20, contrast=40, gamma=.7), **changes)
+
+
+@pytest.mark.parametrize('suffix', ['.json', '.h5'])
+def test_display_settings_roundtrip_with_preset(tmp_path, suffix):
+    presets = {'Styled': make_preset(recipe(), display()), 'Plain': make_preset(recipe())}
+    assert presets['Styled']['version'] == 2 and presets['Plain']['version'] == 1
+    path = tmp_path / ('project' + suffix)
+    save_project(path, [source()], {'pipeline_presets': presets})
+    assert load_project(path)[1]['pipeline_presets'] == presets
+    export = tmp_path / 'preset.json'
+    save_presets(export, presets)
+    assert load_presets(export) == presets
+    # Spectra ignore display settings; the computed result is unchanged.
+    styled, plain = (apply_preset([source()], presets[n], n)[0] for n in ('Styled', 'Plain'))
+    np.testing.assert_array_equal(styled.values, plain.values)
+
+
+@pytest.mark.parametrize('bad', [dict(palette='jet'), dict(invert=1), dict(brightness=101), dict(contrast=1.5),
+                                 dict(gamma=5), dict(gamma=True), dict(extra=1)])
+def test_invalid_display_settings_rejected(bad):
+    with pytest.raises(ValueError):
+        make_preset(recipe(), display(**bad))
+    preset = make_preset(recipe(), display())
+    preset['display'].update(bad)
+    with pytest.raises(ValueError):
+        validate_presets({'Bad': preset})
+    plain = make_preset(recipe())
+    plain['display'] = display()  # Version 1 presets carry no display settings.
+    with pytest.raises(ValueError):
+        validate_presets({'Bad': plain})
+
+
+def test_display_limits_follow_each_map_range():
+    values = np.array([[0., 10.], [np.nan, 20.]])
+    assert display_limits(values, display(brightness=0, contrast=0)) == (0, 20)
+    np.testing.assert_allclose(display_limits(values, display(brightness=50, contrast=50)), (0, 10))
+    np.testing.assert_allclose(display_limits(values * 3, display(brightness=50, contrast=50)), (0, 30))
+
+
+def test_editor_saves_and_loads_display_settings(app):
+    presets = {}
+    dialog = AnalysisDialog(source(), presets=presets, display=display())
+    try:
+        dialog.load_operations(recipe())
+        dialog.store_preset('Plain')
+        assert 'display' not in presets['Plain']
+        dialog.display_box.setChecked(True)
+        dialog.store_preset('Styled')
+        assert presets['Styled']['display'] == display()
+        dialog.preset_choice.setCurrentText('Plain')
+        dialog.load_selected_preset()
+        assert not dialog.display_box.isChecked()
+        dialog.preset_choice.setCurrentText('Styled')
+        dialog.load_selected_preset()
+        assert dialog.display() == display()
+    finally:
+        dialog.close()

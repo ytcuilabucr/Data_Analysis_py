@@ -53,7 +53,8 @@ from PySide6 import QtWidgets as W
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
 from .navigation import PlotNavigationToolbar
-from .images import raster, contrast_limits
+from .images import raster, contrast_limits, display_norm
+from .presets import display_limits
 from .spatial import image_geometry
 from .screen import fit_to_screen
 
@@ -65,6 +66,7 @@ class ImagePreviewDialog(W.QDialog):
         fit_to_screen(self, 1050, 740)
         self.input = raster(source).copy()
         self.operations = deepcopy(preset['operations'])
+        self.display = deepcopy(preset.get('display'))
         self.geometry = image_geometry(source, self.input.shape)
         self.input_unit = channel_unit(source, 3)
         self.palette, self.transposed = palette, transpose
@@ -82,6 +84,13 @@ class ImagePreviewDialog(W.QDialog):
                            if step['parameters'] else '') for step in self.operations))
         recipe.setWordWrap(True)
         layout.addWidget(recipe)
+        if self.display:
+            d = self.display
+            colors = W.QLabel(f"Preset display: {d['palette']}{' (inverted)' if d['invert'] else ''}, "
+                              f"brightness {d['brightness']}, contrast {d['contrast']}, γ = {d['gamma']:.2f}. "
+                              'Brightness and contrast are relative to each map\'s own data range.')
+            colors.setWordWrap(True)
+            layout.addWidget(colors)
         row = W.QHBoxLayout()
         row.addWidget(W.QLabel('Smoothing / differentiation axis'))
         self.axis = W.QComboBox()
@@ -92,7 +101,7 @@ class ImagePreviewDialog(W.QDialog):
         rules = W.QLabel('Mean and normalization use all finite image pixels. Local operations stay within each row/column, '
                         'preserve missing gaps and clip smoothing windows at boundaries. Derivatives use calibrated pixel spacing '
                         '(pixel units when unavailable), one-sided endpoint slopes and missing values for singletons. '
-                        'No resampling. Each map uses its own full-range color scale.')
+                        'No resampling. Each map uses its own color scale over its own data range.')
         rules.setWordWrap(True)
         layout.addWidget(rules)
         self.figure = Figure(figsize=(9, 5), tight_layout=True)
@@ -132,14 +141,22 @@ class ImagePreviewDialog(W.QDialog):
             xlabel, ylabel = ylabel, xlabel
         for ax, array, title, unit in zip(self.figure.subplots(1, 2),
                 [self.input, self.result], ['Input', 'Temporary result'], [self.input_unit, self.output_unit]):
-            lo, hi = contrast_limits(array, 'Full range')
+            if self.display:
+                lo, hi = display_limits(array, self.display)
+                cmap = self.display['palette'] + ('_r' if self.display['invert'] else '')
+                norm = display_norm(lo, hi, self.display['gamma'])
+            else:
+                cmap, norm = self.palette, display_norm(*contrast_limits(array, 'Full range'))
             artist = ax.imshow(np.ma.masked_invalid(array.T if self.transposed else array),
                 extent=extent, origin='lower', interpolation='nearest', aspect='equal',
-                cmap=self.palette, vmin=lo, vmax=hi)
+                cmap=cmap, norm=norm)
             ax.set_title(title)
             ax.set_xlabel(xlabel)
             ax.set_ylabel(ylabel)
-            self.figure.colorbar(artist, ax=ax, label=unit or 'unknown unit', shrink=.75)
+            label = unit or 'unknown unit'
+            if self.display and self.display['gamma'] != 1:
+                label += f" (γ = {self.display['gamma']:.2f})"
+            self.figure.colorbar(artist, ax=ax, label=label, shrink=.75)
         self.status.setText(f'Output units: {self.output_unit or "unknown"}. '
                             f'{np.count_nonzero(~np.isfinite(self.result))} missing pixels. Close to discard this preview.')
         self.canvas.draw_idle()

@@ -196,7 +196,9 @@ def analysis_pipeline(self):
     if self.current():
         from .analysis_ui import AnalysisDialog, MultiAnalysisDialog
         selected = self.selected_datasets()
-        dialog = MultiAnalysisDialog(selected, self) if len(selected) > 1 else AnalysisDialog(self.current(), self, self.pipeline_presets, self.pipeline_presets_changed)
+        dialog = (MultiAnalysisDialog(selected, self) if len(selected) > 1 else
+                  AnalysisDialog(self.current(), self, self.pipeline_presets, self.pipeline_presets_changed,
+                                 self.image_viewer.display_settings()))
         if dialog.exec() == W.QDialog.DialogCode.Accepted:
             for result in dialog.datasets if len(selected) > 1 else [dialog.dataset]:
                 self.add_dataset(result)
@@ -255,7 +257,8 @@ def reopen_analysis_recipe(self):
     source = next((d for d in self.datasets if d.id == record['source']['dataset_id']), None)
     if source is None:
         raise ValueError('The source dataset is unavailable. Its recipe cannot be reopened against the source.')
-    dialog = AnalysisDialog(source, self, self.pipeline_presets, self.pipeline_presets_changed)
+    dialog = AnalysisDialog(source, self, self.pipeline_presets, self.pipeline_presets_changed,
+                            self.image_viewer.display_settings())
     dialog.load_operations(record['operations'])
     for axis in ('x', 'y'):
         channel = record['input_channels'][axis]

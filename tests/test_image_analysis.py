@@ -157,3 +157,32 @@ def test_calibrated_preview_units(app):
         np.testing.assert_allclose(dialog.result, 3)
     finally:
         dialog.close()
+
+
+def test_preview_uses_preset_display_settings(app):
+    display = dict(palette='afmhot', invert=True, brightness=50, contrast=50, gamma=2.)
+    dialog = ImagePreviewDialog(image(), make_preset([step('mean_subtract')], display), 'Styled')
+    try:
+        artists = [ax.images[0] for ax in dialog.figure.axes if ax.images]
+        for artist, limits in zip(artists, [(0, 5), (-5, 0)], strict=True):
+            assert artist.get_cmap().name == 'afmhot_r'
+            assert artist.norm.gamma == 2
+            np.testing.assert_allclose(artist.get_clim(), limits)
+            assert 'γ = 2.00' in artist.colorbar.ax.get_ylabel()
+    finally:
+        dialog.close()
+
+
+def test_viewer_display_settings_are_valid_presets(app):
+    window = MainWindow()
+    try:
+        viewer = window.image_viewer
+        viewer.palette.setCurrentText('plasma')
+        viewer.invert.setChecked(True)
+        viewer.gamma.setValue(50)
+        settings = viewer.display_settings()
+        assert settings == dict(palette='plasma', invert=True, brightness=0, contrast=0, gamma=2.)
+        make_preset([step('mean_subtract')], settings)
+    finally:
+        window.dirty = False
+        window.close()

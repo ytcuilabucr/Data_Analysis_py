@@ -20,6 +20,41 @@ def _read_json(group, name):
     return json.loads(group[name][:].tobytes().decode('utf-8'))
 
 
+def _attributes(group):
+    return {key: value.item() if isinstance(value, np.generic) else value for key, value in group.attrs.items()}
+
+
+def _write_presets(file, presets):
+    """Native groups/attributes: /pipeline_presets/<order>/{policies,operations/<order>/parameters,display}."""
+    root = file.create_group('pipeline_presets')
+    for index, (name, preset) in enumerate(presets.items()):
+        # Names are attributes because preset names may contain '/'.
+        group = root.create_group(f'{index:08d}')
+        group.attrs.update(name=name, version=preset['version'])
+        group.create_group('policies').attrs.update(preset['policies'])
+        steps = group.create_group('operations')
+        for position, step in enumerate(preset['operations']):
+            item = steps.create_group(f'{position:08d}')
+            item.attrs['operation'] = step['operation']
+            item.create_group('parameters').attrs.update(step['parameters'])
+        if 'display' in preset:
+            group.create_group('display').attrs.update(preset['display'])
+
+
+def _read_presets(root):
+    presets = {}
+    for group in root.values():
+        attributes = _attributes(group)
+        preset = dict(version=attributes['version'], policies=_attributes(group['policies']),
+                      operations=[dict(operation=_attributes(item)['operation'],
+                                       parameters=_attributes(item['parameters']))
+                                  for item in group['operations'].values()])
+        if 'display' in group:
+            preset['display'] = _attributes(group['display'])
+        presets[attributes['name']] = preset
+    return presets
+
+
 def save_hdf5(path, datasets, settings):
     temporary = None
     try:
@@ -28,7 +63,9 @@ def save_hdf5(path, datasets, settings):
         with h5py.File(temporary, 'w') as file:
             file.attrs['format'] = 'rogi'
             file.attrs['version'] = 1
-            _write_json(file, 'settings', settings)
+            _write_json(file, 'settings', {k: v for k, v in settings.items() if k != 'pipeline_presets'})
+            if 'pipeline_presets' in settings:
+                _write_presets(file, settings['pipeline_presets'])
             runs = file.create_group('datasets')
             for index, dataset in enumerate(datasets):
                 group = runs.create_group(f'{index:08d}')
@@ -69,4 +106,8 @@ def load_hdf5(path):
                 item['fit'] = _read_json(fit, 'metadata')
                 item['fit'].update({k: fit[k][:].tolist() for k in FIT_ARRAYS})
             items.append(item)
-        return dict(format='rogi', version=1, datasets=items, settings=_read_json(file, 'settings'))
+        settings = _read_json(file, 'settings')
+        # Older files keep presets inside the settings JSON; native groups take precedence.
+        if 'pipeline_presets' in file:
+            settings['pipeline_presets'] = _read_presets(file['pipeline_presets'])
+        return dict(format='rogi', version=1, datasets=items, settings=settings)

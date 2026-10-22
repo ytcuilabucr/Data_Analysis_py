@@ -1,6 +1,7 @@
 """Pipeline editor and explicit, disposable result preview."""
 from copy import deepcopy
-from .presets import make_preset, validate_presets, save_presets, load_presets, apply_preset
+from .presets import (make_preset, validate_presets, save_presets, load_presets, apply_preset,
+                      PALETTES, DEFAULT_DISPLAY)
 from PySide6 import QtWidgets as W, QtCore as C
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
@@ -12,7 +13,7 @@ LABELS = {'mean_subtract': 'Subtract mean', 'normalize': 'Normalize',
 
 
 class AnalysisDialog(W.QDialog):
-    def __init__(self, dataset, parent=None, presets=None, on_presets_changed=None):
+    def __init__(self, dataset, parent=None, presets=None, on_presets_changed=None, display=None):
         super().__init__(parent)
         self.source = dataset
         self.presets = presets if presets is not None else {}
@@ -73,6 +74,29 @@ class AnalysisDialog(W.QDialog):
         params.addRow('Normalization method (selected step)', self.method)
         params.addRow('Centered window, odd sample count (selected step)', self.window)
         layout.addLayout(params)
+        # Display settings only affect 2D map previews; they never change computed values.
+        self.display_box = W.QGroupBox('Save image display settings with the preset (2D map previews)')
+        self.display_box.setCheckable(True)
+        self.display_box.setChecked(False)
+        display_form = W.QHBoxLayout(self.display_box)
+        self.palette = W.QComboBox()
+        self.palette.addItems(PALETTES)
+        self.invert = W.QCheckBox('Invert')
+        self.brightness, self.contrast = W.QSpinBox(), W.QSpinBox()
+        for spin in (self.brightness, self.contrast):
+            spin.setRange(-100, 100)
+        self.brightness.setToolTip('Shifts the color window relative to each image\'s data range (0 = centred).')
+        self.contrast.setToolTip('Narrows (positive) or widens (negative) the color window; 0 spans the data range.')
+        self.gamma = W.QDoubleSpinBox()
+        self.gamma.setRange(.25, 4)
+        self.gamma.setDecimals(2)
+        self.gamma.setSingleStep(.05)
+        for widget in (W.QLabel('Colors'), self.palette, self.invert, W.QLabel('Brightness'), self.brightness,
+                       W.QLabel('Contrast'), self.contrast, W.QLabel('Gamma'), self.gamma):
+            display_form.addWidget(widget)
+        display_form.addStretch()
+        layout.addWidget(self.display_box)
+        self.set_display(display or DEFAULT_DISPLAY)
         self.steps.currentRowChanged.connect(self.select_step)
         self.method.currentIndexChanged.connect(self.update_step)
         self.window.valueChanged.connect(self.update_step)
@@ -115,15 +139,33 @@ class AnalysisDialog(W.QDialog):
         self.steps.setCurrentRow(0)
         self.invalidate()
 
+    def set_display(self, display):
+        self.palette.setCurrentText(display['palette'])
+        self.invert.setChecked(display['invert'])
+        self.brightness.setValue(display['brightness'])
+        self.contrast.setValue(display['contrast'])
+        self.gamma.setValue(display['gamma'])
+
+    def display(self):
+        if not self.display_box.isChecked():
+            return None
+        return dict(palette=self.palette.currentText(), invert=self.invert.isChecked(),
+                    brightness=self.brightness.value(), contrast=self.contrast.value(),
+                    gamma=round(self.gamma.value(), 2))
+
     def load_selected_preset(self):
         name = self.preset_choice.currentText()
         if name in self.presets:
             self.load_operations(self.presets[name]['operations'])
+            display = self.presets[name].get('display')
+            self.display_box.setChecked(display is not None)
+            if display is not None:
+                self.set_display(display)
             self.status.setText('Preset loaded. Check input channels and units, then preview. Changes do not update the preset until Save/update.')
 
     def store_preset(self, name):
         name = name.strip()
-        preset = make_preset(self.operations())
+        preset = make_preset(self.operations(), self.display())
         validate_presets({name: preset})
         self.presets[name] = preset
         self.on_presets_changed()

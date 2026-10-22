@@ -69,3 +69,33 @@ def test_invalid_hdf5(tmp_path, corruption):
             file['datasets/00000000/values'][0, 0] = np.inf
     with pytest.raises(ValueError):
         load_project(path)
+
+
+def test_presets_use_native_hdf5_groups_not_json(tmp_path):
+    from rogi.hdf5 import _read_json, _write_json
+    from rogi.presets import make_preset
+    steps = [dict(operation='mean_subtract', parameters={}),
+             dict(operation='moving_average', parameters={'window': 3})]
+    display = dict(palette='afmhot', invert=False, brightness=10, contrast=30, gamma=.76)
+    presets = {'Height: centre / smooth': make_preset(steps, display), 'Δ plain': make_preset(steps[:1])}
+    path = tmp_path / 'project.h5'
+    save_project(path, [], dict(title='t', pipeline_presets=presets))
+    with h5py.File(path, 'r') as file:
+        assert 'pipeline_presets' not in _read_json(file, 'settings')
+        first = file['pipeline_presets/00000000']
+        assert first.attrs['name'] == 'Height: centre / smooth' and first.attrs['version'] == 2
+        assert first['operations/00000001'].attrs['operation'] == 'moving_average'
+        assert first['operations/00000001/parameters'].attrs['window'] == 3
+        assert first['display'].attrs['palette'] == 'afmhot'
+        assert 'display' not in file['pipeline_presets/00000001']
+    restored = load_project(path)[1]
+    assert restored == dict(title='t', pipeline_presets=presets)
+    assert list(restored['pipeline_presets']) == list(presets)
+    assert type(restored['pipeline_presets']['Height: centre / smooth']['display']['invert']) is bool
+    # Projects written before native storage keep presets inside the settings JSON.
+    with h5py.File(path, 'r+') as file:
+        del file['pipeline_presets'], file['settings']
+        _write_json(file, 'settings', dict(title='t', pipeline_presets=presets))
+    assert load_project(path)[1] == dict(title='t', pipeline_presets=presets)
+    with pytest.raises(ValueError):
+        save_project(path, [], dict(pipeline_presets={'bad\x00name': make_preset(steps)}))

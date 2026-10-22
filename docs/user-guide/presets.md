@@ -11,7 +11,26 @@ changes affect the preset only when saved again. Presets are data-independent:
 input channels and units are chosen for each application, not copied from the
 original dataset. The preset includes its version and numerical policies.
 
-Presets persist in JSON and HDF5 project settings. **Export…** writes the selected
+To store image colors with a recipe, check **Save image display settings with the
+preset** and choose **Colors**, **Invert**, **Brightness**, **Contrast** and
+**Gamma**. The fields start from the current **2D Map** settings. Brightness and
+contrast (−100 to 100) are stored relative to each image's own finite data
+range, using the same mapping as the 2D Map sliders: 0/0 spans the full range,
+positive brightness lowers the window centre, and each +50 contrast halves the
+window width. That lets one preset style images of different heights or units.
+Gamma (0.25–4) is stored as its value. Display settings only affect 2D map
+previews. They never change computed values, provenance, or line-pipeline
+results. Presets with display settings are saved as preset version 2; version 1
+presets without them stay valid. Older Rogi builds reject version 2 presets.
+
+Presets are saved with the project. In an HDF5 project (`.h5`) each recipe is
+stored natively under `/pipeline_presets/<order>`, not as JSON. Its `name` and
+`version` are attributes, with `policies`, `operations/<order>` (an `operation`
+attribute plus a `parameters` group) and optional `display` as subgroups whose
+values are typed HDF5 attributes. Any HDF5 tool can read them. Recipe order is
+preserved, and names may contain `/` but not NUL characters. HDF5 projects saved
+before this change, which kept presets inside the settings JSON, still open. A
+JSON project (`.json`) keeps presets in its `settings`. **Export…** writes the selected
 saved preset to a standalone JSON file; **Import…** adds presets from such a file
 so they can be used in another project. Imported name collisions receive numbered
 suffixes. Explicitly saved/imported presets stay in the workspace even if you
@@ -54,7 +73,10 @@ uses calibrated pixel spacing when available, otherwise pixel units, and the
 same one-sided endpoint and singleton rules as the line pipeline. These are
 axis-wise operations, not an isotropic 2D smoothing kernel or gradient magnitude.
 Operation order and parameters are preserved. Each map has an independent
-full-range color scale and a labeled color bar. Display transpose affects
+color scale and a labeled color bar. Without saved display settings, it uses the
+map's full range and the 2D Map palette. With saved display settings, both the
+input map and the result map use the preset's palette, inversion and γ. Each map
+also gets brightness/contrast limits computed from its own data range. Display transpose affects
 presentation only; the processing axes always refer to the original image.
 
 The preview is a snapshot of the selected channel at its current revision. It
