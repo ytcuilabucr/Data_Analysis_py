@@ -4,10 +4,10 @@
 
 ## Plot windows
 
-The **Line plot**, the **2D map** and the **Plot controls** column are panels that can each move into their own window, for example the line plot on one monitor and the 2D map on another. Use **View → Separate windows**, or the float button on a panel's title bar:
+The **Line plot** and the **2D map** are panels that can each move into their own window, for example the line plot on one monitor and the 2D map on another. The plot controls stay beside the line plot and move with it. Use **View → Separate windows**, or the float button on a panel's title bar:
 
-- Check **Line plot**, **2D map** or **Plot controls** to float that panel; uncheck it, or double-click the window's title bar, to dock it again. **Float or dock current plot** (Ctrl+Shift+D, ⌘⇧D on macOS) does this for the plot you last worked in.
-- Docked, the line plot and 2D map share the tabs above the data table, as before. When the 2D map is the docked plot, the table makes room for it unless **Show data table** is checked; with both plots floating, the table fills the middle column. Plot controls show whenever the line plot is on screen, docked or floating.
+- Check **Line plot** or **2D map** to float that panel; uncheck it, or double-click the window's title bar, to dock it again. **Float or dock current plot** (Ctrl+Shift+D, ⌘⇧D on macOS) does this for the plot you last worked in.
+- Docked, the line plot and 2D map share the tabs above the data table, as before. When the 2D map is the docked plot, the table makes room for it unless **Show data table** is checked; with both plots floating, the table fills the middle column.
 - A floating plot window's title names the active dataset, and the panel when there are several.
 - Undo, Save, Import and the other main-window shortcuts keep working in floating windows, and floating windows are locked like the rest of the application during imports, saves and fits. Error messages, the color picker, progress and export dialogs open over the window you are working in.
 - Plot hints and the coordinate cursor readout appear in the line plot's own status line, below the plot.
@@ -16,6 +16,8 @@ The **Line plot**, the **2D map** and the **Plot controls** column are panels th
 - On macOS floating panels are tool windows: they stay above the main window, have no full-screen or minimize button, and hide while another application is active unless **Keep separate windows visible in other apps** is checked.
 
 ## Plot controls
+
+**Curves — active panel**, at the top of the plot controls, lists the curves in the active panel. To compare another dataset without going back to the dataset list, choose it under the list and click **Add curve**: it is shown in the active panel and becomes the active dataset, so its X/Y channels can be changed right away. **Remove selected curve** hides that curve; in a panel with its own channel list it only leaves that panel. Both can be undone. Adding a hidden dataset to one panel does not make it appear in the other panels. Checking datasets in the dataset list still works as before.
 
 Enable **View → Show plot controls** for advanced presentation options; the default interface stays compact.
 

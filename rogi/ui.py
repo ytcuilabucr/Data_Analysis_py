@@ -60,6 +60,10 @@ class MainWindow(W.QMainWindow):
         self._build_plot_controls(layout)
         self._build_statistics(layout)
         self._build_fitting(layout)
+        # Never narrower than the controls' widest row, so no horizontal scrollbar.
+        self.analysis_panel.setMinimumWidth(self.analysis_panel.widget().minimumSizeHint().width()
+                                            + self.analysis_panel.verticalScrollBar().sizeHint().width()
+                                            + 2 * self.analysis_panel.frameWidth())
         self._build_connections()
         self.restore_plot_layout()
 
@@ -128,16 +132,11 @@ class MainWindow(W.QMainWindow):
         splitter.addWidget(self.browser_panel)
 
     def _build_center(self, splitter):
-        # A nested main window holds the plot views and controls as docks around
+        # A nested main window holds the plot views as docks above
         # the data table; floated, each becomes its own window (e.g. on another monitor).
         center = W.QMainWindow()
         center.setWindowFlags(C.Qt.WindowType.Widget)
         center.setTabPosition(C.Qt.DockWidgetArea.TopDockWidgetArea, W.QTabWidget.TabPosition.North)
-        # Docked controls keep the full-height column beside the plot and table.
-        for corner in (C.Qt.Corner.TopRightCorner, C.Qt.Corner.BottomRightCorner):
-            center.setCorner(corner, C.Qt.DockWidgetArea.RightDockWidgetArea)
-        for corner in (C.Qt.Corner.TopLeftCorner, C.Qt.Corner.BottomLeftCorner):
-            center.setCorner(corner, C.Qt.DockWidgetArea.LeftDockWidgetArea)
         self.plot_host = center
         splitter.addWidget(center)
         plot_widget = W.QWidget()
@@ -157,8 +156,11 @@ class MainWindow(W.QMainWindow):
         self.image_viewer = ImageViewer(self)
         self.image_viewer.profile_created.connect(self.add_dataset)
         self.image_viewer.preview_requested.connect(lambda name: self.guard(lambda: self.preview_image_preset(name)))
+        # Plot controls sit beside the line plot and float with it (see _build_analysis_container).
+        self.line_view = W.QSplitter()
+        self.line_view.addWidget(plot_widget)
         top = C.Qt.DockWidgetArea.TopDockWidgetArea
-        self.plot_docks = [plot_windows.make_dock(center, 'Line plot', 'line_dock', plot_widget, top, top),
+        self.plot_docks = [plot_windows.make_dock(center, 'Line plot', 'line_dock', self.line_view, top, top),
                            plot_windows.make_dock(center, '2D map', 'map_dock', self.image_viewer, top, top)]
         center.tabifyDockWidget(*self.plot_docks)
         self.plot_docks[0].raise_()
@@ -194,12 +196,11 @@ class MainWindow(W.QMainWindow):
         panel_scroll.setWidget(panel)
         panel_scroll.setMinimumWidth(300)
         panel_scroll.setMaximumWidth(400)
-        sides = C.Qt.DockWidgetArea.LeftDockWidgetArea | C.Qt.DockWidgetArea.RightDockWidgetArea
-        self.controls_dock = plot_windows.make_dock(self.plot_host, 'Plot controls', 'controls_dock', panel_scroll,
-                                                    C.Qt.DockWidgetArea.RightDockWidgetArea, sides)
-        self.docks = self.plot_docks + [self.controls_dock]
+        self.line_view.addWidget(panel_scroll)
+        self.line_view.setCollapsible(0, False)
+        self.line_view.setSizes([680, 380])
+        self.docks = self.plot_docks
         plot_windows.build_menu(self, self.show_fitting.parent())
-        self.plot_host.resizeDocks([self.controls_dock], [380], C.Qt.Orientation.Horizontal)
         splitter.setSizes([420, 1060])
         return layout
 
@@ -233,6 +234,8 @@ class MainWindow(W.QMainWindow):
         self.plot_controls.set_color_requested.connect(self.set_color)
         self.plot_controls.appearance_changed_requested.connect(self.appearance_changed)
         self.plot_controls.presentation_changed_requested.connect(self.presentation_changed)
+        self.plot_controls.add_curve_requested.connect(lambda dataset_id: self.guard(lambda: self.add_curve(dataset_id)))
+        self.plot_controls.remove_curve_requested.connect(lambda dataset_id: self.guard(lambda: self.remove_curve(dataset_id)))
 
     def _build_plot_controls(self, layout):
         self.show_plot_controls.toggled.connect(self.plot_panel.setVisible)
@@ -472,6 +475,12 @@ class MainWindow(W.QMainWindow):
 
     def activate_panel(self, index):
         return plot_actions.activate_panel(self, index)
+
+    def add_curve(self, dataset_id):
+        return plot_actions.add_curve(self, dataset_id)
+
+    def remove_curve(self, dataset_id):
+        return plot_actions.remove_curve(self, dataset_id)
 
     def set_sync_x(self, enabled):
         return plot_actions.set_sync_x(self, enabled)

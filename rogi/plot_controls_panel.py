@@ -15,11 +15,58 @@ class PlotControlsPanel(C.QObject):
     set_color_requested = C.Signal(str)
     appearance_changed_requested = C.Signal()
     presentation_changed_requested = C.Signal()
+    add_curve_requested = C.Signal(str)
+    remove_curve_requested = C.Signal(str)
 
     def __init__(self, layout):
         super().__init__(layout.parentWidget())
+        self._build_curves(layout)
         self._build_channels(layout)
         self._build_plot_controls(layout)
+
+    def _build_curves(self, layout):
+        """Curves of the active panel, and other datasets to add, without leaving the plot window."""
+        group = W.QGroupBox("Curves — active panel")
+        form = W.QVBoxLayout(group)
+        self.curves = W.QListWidget()
+        self.curves.setAccessibleName('Plotted curves')
+        self.curves.setMaximumHeight(110)
+        form.addWidget(self.curves)
+        remove = W.QPushButton('Remove selected curve')
+        remove.clicked.connect(lambda: self.curves.currentItem() and self.remove_curve_requested.emit(
+            self.curves.currentItem().data(C.Qt.ItemDataRole.UserRole)))
+        form.addWidget(remove)
+        self.curve_choice = W.QComboBox()
+        self.curve_choice.setAccessibleName('Dataset to add as a curve')
+        self.curve_choice.setToolTip('Add another dataset to this plot as an additional curve.')
+        self.curve_choice.setMinimumContentsLength(12)
+        self.curve_choice.setSizeAdjustPolicy(W.QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
+        form.addWidget(self.curve_choice)
+        self.add_curve = W.QPushButton('Add curve')
+        self.add_curve.clicked.connect(lambda: self.curve_choice.currentData() and self.add_curve_requested.emit(
+            self.curve_choice.currentData()))
+        form.addWidget(self.add_curve)
+        layout.addWidget(group)
+
+    def set_curves(self, plotted, candidates):
+        """plotted and candidates are (dataset id, label) pairs."""
+        current = self.curves.currentItem().data(C.Qt.ItemDataRole.UserRole) if self.curves.currentItem() else None
+        with C.QSignalBlocker(self.curves):
+            self.curves.clear()
+            for dataset_id, label in plotted:
+                item = W.QListWidgetItem(label, self.curves)
+                item.setData(C.Qt.ItemDataRole.UserRole, dataset_id)
+                if dataset_id == current:
+                    self.curves.setCurrentItem(item)
+        chosen = self.curve_choice.currentData()
+        with C.QSignalBlocker(self.curve_choice):
+            self.curve_choice.clear()
+            for dataset_id, label in candidates:
+                self.curve_choice.addItem(label, dataset_id)
+            index = self.curve_choice.findData(chosen)
+            self.curve_choice.setCurrentIndex(max(index, 0))
+        self.curve_choice.setEnabled(bool(candidates))
+        self.add_curve.setEnabled(bool(candidates))
 
     def _build_channels(self, layout):
         self.info = W.QLabel("Import a CSV, TSV, TXT, or DAT file to begin.")
@@ -123,7 +170,7 @@ class PlotControlsPanel(C.QObject):
         self.log_notice.setWordWrap(True)
         layout.addWidget(self.log_notice)
         self.coordinates = W.QLabel("")
-        hint = W.QLabel("Changing channels for a hidden dataset shows it alone. Check datasets to compare curves.")
+        hint = W.QLabel("Changing channels for a hidden dataset shows it alone. Add curves above, or check datasets, to compare.")
         hint.setWordWrap(True)
         layout.addWidget(hint)
 

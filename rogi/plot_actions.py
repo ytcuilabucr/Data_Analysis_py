@@ -101,6 +101,61 @@ def activate_panel(self, index):
     self.redraw()
 
 
+def curve_label(d):
+    return f"{d.name} — {d.columns[d.ycol]}" if d.ycol < len(d.columns) else d.name
+
+
+def refresh_curves(self):
+    plotted = [d for d in self.panel_datasets(self.panels[self.active_panel]) if d.visible]
+    shown = {d.id for d in plotted}
+    self.plot_controls.set_curves(
+        [(d.id, curve_label(d)) for d in plotted],
+        [(d.id, curve_label(d)) for d in self.datasets if d.id not in shown and len(d.columns) > 1])
+
+
+def add_curve(self, dataset_id):
+    """Show another dataset in the active panel, as checking it in the browser would; undoable."""
+    d = next(d for d in self.datasets if d.id == dataset_id)
+    channels = self.panels[self.active_panel]['channels']
+    visible, pair = d.visible, channels.get(d.id) if channels is not None else None
+    # Visibility is shared by all panels: a hidden dataset listed in other panels
+    # would appear there too, so it leaves them while it joins this one.
+    others = [] if channels is None or visible else [
+        (panel['channels'], panel['channels'][d.id]) for panel in self.panels
+        if panel['channels'] is not None and panel['channels'] is not channels and d.id in panel['channels']]
+    def apply():
+        d.visible = True
+        if channels is not None:
+            channels[d.id] = [d.xcol, d.ycol]
+        for other, _ in others:
+            other.pop(d.id, None)
+    def revert():
+        d.visible = visible
+        if channels is not None:
+            if pair is None:
+                channels.pop(d.id, None)
+            else:
+                channels[d.id] = pair
+        for other, other_pair in others:
+            other[d.id] = other_pair
+    self.history.push(ChangeCommand(self, f"Add curve {d.name}", apply, revert))
+    # Its channels then appear in the axis controls, ready to change.
+    self.activate_dataset(d.id)
+
+
+def remove_curve(self, dataset_id):
+    """Hide the curve; in a panel with its own channel list, only drop it from that panel."""
+    d = next(d for d in self.datasets if d.id == dataset_id)
+    channels = self.panels[self.active_panel]['channels']
+    if channels is None:
+        self.change_attributes([d], 'visible', False, f"Remove curve {d.name}")
+        return
+    pair = channels[d.id]
+    self.history.push(ChangeCommand(self, f"Remove curve {d.name} from panel {self.active_panel + 1}",
+                                    lambda: channels.pop(d.id, None),
+                                    lambda: channels.__setitem__(d.id, pair)))
+
+
 def set_sync_x(self, enabled):
     self.sync_x = enabled
     self.changed()
@@ -358,6 +413,7 @@ def redraw(self):
         self.draw_plot()
     finally:
         self.drawing = False
+    refresh_curves(self)
     plot_windows.update_titles(self)
 
 

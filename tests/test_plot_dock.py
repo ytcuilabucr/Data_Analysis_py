@@ -1,4 +1,4 @@
-"""Plot views and controls float as their own windows yet stay under the main window's lock, shortcuts and layout."""
+"""Plot views float as their own windows yet stay under the main window's lock, shortcuts and layout."""
 import time
 
 import pytest
@@ -31,8 +31,8 @@ def float_dock(window, app, index):
 
 
 def test_floating_docks_are_locked_and_defer_draws(window, app):
+    float_dock(window, app, MAP)
     float_dock(window, app, LINE)
-    window.controls_dock.setFloating(True)
     assert coordinator(window.canvas) is window
     observed = []
     def inspect():
@@ -41,7 +41,7 @@ def test_floating_docks_are_locked_and_defer_draws(window, app):
         observed.append(window.canvas in window._pending_canvases)
     C.QTimer.singleShot(20, inspect)
     window.run_operation('Test lock', lambda: time.sleep(.08))
-    assert observed == [[False, False, False], True]
+    assert observed == [[False, False], True]
     assert all(dock.widget().isEnabled() for dock in window.docks)
 
 
@@ -60,11 +60,11 @@ def test_line_plot_and_map_float_separately(window, app):
     window.plot_tabs.setCurrentIndex(MAP)
     window.image_viewer.show_table.setChecked(False)
     app.processEvents()
-    # The docked map alone takes the table's room; controls only serve the line plot.
-    assert not window.table.isVisible() and not window.controls_dock.isVisible()
+    # The docked map alone takes the table's room.
+    assert not window.table.isVisible()
     float_dock(window, app, MAP)
     assert window.plot_docks[LINE].isVisible() and window.plot_docks[MAP].isVisible()
-    assert window.table.isVisible() and window.controls_dock.isVisible()
+    assert window.table.isVisible()
     window.plot_docks[MAP].setFloating(False)
     app.processEvents()
     assert not window.float_actions['map_dock'].isChecked()
@@ -83,7 +83,7 @@ def test_current_view_follows_focus_and_shortcut_floats_it(window, app):
 
 def test_reset_layout_docks_everything_and_forgets_it(window, app):
     float_dock(window, app, LINE)
-    window.controls_dock.setFloating(True)
+    float_dock(window, app, MAP)
     window.save_plot_layout()
     window.reset_layout.trigger()
     app.processEvents()
@@ -175,3 +175,10 @@ def test_keep_windows_visible_is_remembered(window, app):
         assert reopened.keep_windows_visible.isChecked()
     finally:
         reopened.close()
+
+
+def test_plot_controls_float_with_the_line_plot(window, app):
+    assert 'controls_dock' not in window.float_actions
+    assert window.plot_docks[LINE].isAncestorOf(window.analysis_panel)
+    dock = float_dock(window, app, LINE)
+    assert window.analysis_panel.window() is dock and window.analysis_panel.isVisible()

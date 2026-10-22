@@ -1,4 +1,4 @@
-"""Plot views and plot controls as docks that can float as their own windows.
+"""Plot views as docks that can float as their own windows.
 
 They live in a nested main window (window.plot_host) beside the data table, so
 docked they keep the familiar layout, and each can move to another monitor.
@@ -8,7 +8,7 @@ import sys
 from PySide6 import QtCore as C, QtWidgets as W, QtGui as G
 
 # Bump when the set of docks changes; older saved layouts are then ignored.
-LAYOUT_VERSION = 1
+LAYOUT_VERSION = 2
 LINE, MAP = 0, 1
 
 
@@ -27,7 +27,7 @@ class PlotViews(C.QObject):
     """Tab-like access to the line plot and 2D map docks.
 
     The current view is the one last brought forward or focused; with the
-    docks on separate monitors both can be on screen at once (see shown()).
+    docks on separate monitors both can be on screen at once.
     """
     currentChanged = C.Signal(int)
 
@@ -50,11 +50,8 @@ class PlotViews(C.QObject):
         self.docks[index].raise_()
         self.bring_forward(index)
 
-    def shown(self, index):
-        """On screen: floating, or docked and not behind another tab."""
-        return self.docks[index].isFloating() or self.front[index]
-
     def docked_shown(self, index):
+        """Docked and not behind another tab."""
         return not self.docks[index].isFloating() and self.front[index]
 
     def bring_forward(self, index):
@@ -153,8 +150,6 @@ def layout_changed(self, *args):
     # The 2D map alone in the middle column takes the table's space unless asked otherwise.
     self.table.setVisible(self.image_viewer.show_table.isChecked() or views.docked_shown(LINE)
                           or not views.docked_shown(MAP))
-    # Plot controls act on the line plot only.
-    self.controls_dock.setVisible(views.shown(LINE))
     update_titles(self)
 
 
