@@ -69,3 +69,53 @@ def test_curves_belong_to_the_active_panel(window):
     window.undo_action.trigger()
     assert beta.id not in window.panels[1]['channels'] and not beta.visible
     assert window.panels[0]['channels'][beta.id] == [0, 1]
+
+
+@pytest.fixture
+def three(window):
+    gamma = parse_text('s,w\n1,7\n2,8', name='gamma')
+    window.add_dataset(gamma)
+    gamma.visible = False
+    window.redraw()
+    return window
+
+
+def test_candidates_follow_the_browser_filter(three):
+    window = three
+    assert choices(window) == ['beta — v', 'gamma — w']
+    window.search.setText('gamma')
+    assert choices(window) == ['gamma — w']
+    assert window.plot_controls.match_browser_filter.text() == 'Match file browser filter (1 hidden)'
+    # Plotted curves stay listed even when the filter hides them.
+    alpha = window.datasets[0]
+    assert curve_ids(window) == [alpha.id]
+    window.search.setText('')
+    assert choices(window) == ['beta — v', 'gamma — w']
+    assert window.plot_controls.match_browser_filter.text() == 'Match file browser filter'
+
+
+def test_filter_toggle_offers_every_dataset(three):
+    window = three
+    window.search.setText('gamma')
+    window.plot_controls.match_browser_filter.setChecked(False)
+    assert choices(window) == ['beta — v', 'gamma — w']
+    window.plot_controls.match_browser_filter.setChecked(True)
+    assert choices(window) == ['gamma — w']
+
+
+def test_type_to_search_adds_the_matching_curve(three):
+    window = three
+    combo = window.plot_controls.curve_choice
+    assert combo.isEditable() and combo.insertPolicy() == W.QComboBox.InsertPolicy.NoInsert
+    completer = combo.completer()
+    completer.setCompletionPrefix('amm')
+    assert completer.currentCompletion() == 'gamma — w'
+    combo.setEditText('gam')
+    assert window.plot_controls.chosen_curve() is None
+    window.plot_controls.add_curve.click()  # a partial search adds nothing
+    assert choices(window) == ['beta — v', 'gamma — w']
+    combo.setEditText('GAMMA — w')
+    window.plot_controls.add_curve.click()
+    gamma = window.datasets[2]
+    assert gamma.visible and gamma.id in curve_ids(window)
+    assert choices(window) == ['beta — v']

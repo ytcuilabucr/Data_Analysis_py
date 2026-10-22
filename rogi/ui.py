@@ -253,6 +253,8 @@ class MainWindow(W.QMainWindow):
         self.plot_controls.presentation_changed_requested.connect(self.presentation_changed)
         self.plot_controls.add_curve_requested.connect(lambda dataset_id: self.guard(lambda: self.add_curve(dataset_id)))
         self.plot_controls.remove_curve_requested.connect(lambda dataset_id: self.guard(lambda: self.remove_curve(dataset_id)))
+        self.plot_controls.curve_filter_changed_requested.connect(self.refresh_curves)
+        self.browser_panel.filter_changed.connect(self.refresh_curves)
 
     def _build_plot_controls(self, layout):
         self.show_plot_controls.toggled.connect(self.plot_panel.setVisible)
@@ -510,6 +512,9 @@ class MainWindow(W.QMainWindow):
 
     def remove_curve(self, dataset_id):
         return plot_actions.remove_curve(self, dataset_id)
+
+    def refresh_curves(self):
+        return plot_actions.refresh_curves(self)
 
     def set_sync_x(self, enabled):
         return plot_actions.set_sync_x(self, enabled)

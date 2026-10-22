@@ -108,9 +108,13 @@ def curve_label(d):
 def refresh_curves(self):
     plotted = [d for d in self.panel_datasets(self.panels[self.active_panel]) if d.visible]
     shown = {d.id for d in plotted}
+    candidates = [d for d in self.datasets if d.id not in shown and len(d.columns) > 1]
+    # Only the datasets to add follow the browser filter; plotted curves stay removable.
+    hidden = self.browser_panel.hidden_ids() if self.plot_controls.match_browser_filter.isChecked() else set()
     self.plot_controls.set_curves(
         [(d.id, curve_label(d)) for d in plotted],
-        [(d.id, curve_label(d)) for d in self.datasets if d.id not in shown and len(d.columns) > 1])
+        [(d.id, curve_label(d)) for d in candidates if d.id not in hidden],
+        filtered=sum(d.id in hidden for d in candidates))
 
 
 def add_curve(self, dataset_id):

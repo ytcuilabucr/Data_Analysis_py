@@ -144,6 +144,7 @@ class BrowserPanel(W.QWidget):
     selection_requested = C.Signal(int)
     action_requested = C.Signal(str, object)
     attributes_requested = C.Signal(object, str, object, str)
+    filter_changed = C.Signal()
 
     def __init__(self, state):
         super().__init__()
@@ -355,6 +356,12 @@ class BrowserPanel(W.QWidget):
                 self.browser.setCurrentItem(selected[0] if selected else None,
                                             C.QItemSelectionModel.SelectionFlag.NoUpdate)
         self.selection_changed()
+        self.filter_changed.emit()
+
+    def hidden_ids(self):
+        """Ids of datasets the current filter hides from the browser."""
+        rows = (self.browser.item(row) for row in range(self.browser.count()))
+        return {item.data(C.Qt.ItemDataRole.UserRole) for item in rows if item.isHidden()}
 
 
     def update_browser_item(self, item, dataset):

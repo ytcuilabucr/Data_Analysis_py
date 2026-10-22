@@ -17,6 +17,7 @@ class PlotControlsPanel(C.QObject):
     presentation_changed_requested = C.Signal()
     add_curve_requested = C.Signal(str)
     remove_curve_requested = C.Signal(str)
+    curve_filter_changed_requested = C.Signal()
 
     def __init__(self, layout):
         super().__init__(layout.parentWidget())
@@ -36,20 +37,39 @@ class PlotControlsPanel(C.QObject):
         remove.clicked.connect(lambda: self.curves.currentItem() and self.remove_curve_requested.emit(
             self.curves.currentItem().data(C.Qt.ItemDataRole.UserRole)))
         form.addWidget(remove)
+        self.match_browser_filter = W.QCheckBox('Match file browser filter')
+        self.match_browser_filter.setChecked(True)
+        self.match_browser_filter.setToolTip('Offer only datasets shown by the file browser filter. '
+                                             'Plotted curves are always listed above.')
+        self.match_browser_filter.toggled.connect(self.curve_filter_changed_requested)
+        form.addWidget(self.match_browser_filter)
         self.curve_choice = W.QComboBox()
         self.curve_choice.setAccessibleName('Dataset to add as a curve')
-        self.curve_choice.setToolTip('Add another dataset to this plot as an additional curve.')
+        self.curve_choice.setToolTip('Add another dataset to this plot as an additional curve. Type to search.')
         self.curve_choice.setMinimumContentsLength(12)
         self.curve_choice.setSizeAdjustPolicy(W.QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
+        # Editable only for searching: typed text never becomes a new entry.
+        self.curve_choice.setEditable(True)
+        self.curve_choice.setInsertPolicy(W.QComboBox.InsertPolicy.NoInsert)
+        self.curve_choice.lineEdit().setPlaceholderText('Search datasets…')
+        completer = self.curve_choice.completer()
+        completer.setFilterMode(C.Qt.MatchFlag.MatchContains)
+        completer.setCaseSensitivity(C.Qt.CaseSensitivity.CaseInsensitive)
+        completer.setCompletionMode(W.QCompleter.CompletionMode.PopupCompletion)
         form.addWidget(self.curve_choice)
         self.add_curve = W.QPushButton('Add curve')
-        self.add_curve.clicked.connect(lambda: self.curve_choice.currentData() and self.add_curve_requested.emit(
-            self.curve_choice.currentData()))
+        self.add_curve.clicked.connect(lambda: self.chosen_curve() and self.add_curve_requested.emit(
+            self.chosen_curve()))
         form.addWidget(self.add_curve)
         layout.addWidget(group)
 
-    def set_curves(self, plotted, candidates):
-        """plotted and candidates are (dataset id, label) pairs."""
+    def chosen_curve(self):
+        """Dataset id whose label matches the combo text, or None while a search is partial."""
+        index = self.curve_choice.findText(self.curve_choice.currentText(), C.Qt.MatchFlag.MatchFixedString)
+        return self.curve_choice.itemData(index) if index >= 0 else None
+
+    def set_curves(self, plotted, candidates, filtered=0):
+        """plotted and candidates are (dataset id, label) pairs; filtered counts candidates the browser filter hides."""
         current = self.curves.currentItem().data(C.Qt.ItemDataRole.UserRole) if self.curves.currentItem() else None
         with C.QSignalBlocker(self.curves):
             self.curves.clear()
@@ -67,6 +87,8 @@ class PlotControlsPanel(C.QObject):
             self.curve_choice.setCurrentIndex(max(index, 0))
         self.curve_choice.setEnabled(bool(candidates))
         self.add_curve.setEnabled(bool(candidates))
+        self.match_browser_filter.setText('Match file browser filter'
+                                          + (f' ({filtered} hidden)' if filtered else ''))
 
     def _build_channels(self, layout):
         self.info = W.QLabel("Import a CSV, TSV, TXT, or DAT file to begin.")
