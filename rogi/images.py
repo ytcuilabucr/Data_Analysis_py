@@ -1,4 +1,5 @@
 """Non-destructive raster presentation for imported SPM channel tables."""
+from .operations import run_operation
 from .spatial import image_geometry
 from .scanfile import channel_views
 import textwrap
@@ -11,7 +12,7 @@ from matplotlib.figure import Figure
 from matplotlib.patches import Rectangle
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from .navigation import PlotNavigationToolbar
-from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
+from .canvas import ResponsiveCanvas as FigureCanvasQTAgg
 
 
 def is_image(dataset):
@@ -46,7 +47,9 @@ def raster(dataset):
         raise ValueError('Image coordinates do not form a complete rectangular grid.')
     x, y = xy[:, 0].astype(int), xy[:, 1].astype(int)
     indices = y * width + x
-    if np.unique(indices).size != len(indices):
+    # Dimensions already bound indices to [0, len(xy)); exactly one hit per
+    # pixel is equivalent to uniqueness without sorting/hashing a large grid.
+    if not np.all(np.bincount(indices, minlength=len(indices)) == 1):
         raise ValueError('Image contains duplicate pixel coordinates.')
     result = np.empty((height, width))
     result[y, x] = dataset.values[:, 3]
@@ -259,9 +262,9 @@ class ImageViewer(W.QWidget):
         if signature == self.signature:
             return
         self.signature = signature
-        self.datasets = [v for d in datasets for v in channel_views(d) if is_image(v)]
+        self.datasets, self.file_channels = run_operation(self, "Preparing image channels",
+            lambda: image_channels(datasets, current))
         self.file_current = current
-        self.file_channels = [v for v in channel_views(current) if is_image(v)] if current else []
         choice = self.channel_choices.get(current.id) if current else None
         if choice is None and current is not None:
             choice = f'{current.id}:{current.ycol}'
@@ -314,9 +317,8 @@ class ImageViewer(W.QWidget):
         try:
             mode = self.mode.currentText()
             lo, hi = (float(self.low.text()), float(self.high.text())) if mode != 'Full range' else (0, 100)
-            arrays = [raster(d) for d in selected]
-            limits = [contrast_limits(a, mode, lo, hi) for a in arrays]
-            geometries = [image_geometry(d, a.shape) for d, a in zip(selected, arrays)]
+            arrays, limits, geometries = run_operation(self, "Preparing images",
+                lambda: prepare_images(selected, mode, lo, hi))
             if self.transpose.isChecked():
                 arrays = [a.T for a in arrays]
                 geometries = [((e[2], e[3], e[0], e[1]), yl, xl) for e, xl, yl in geometries]
@@ -493,7 +495,8 @@ class ImageViewer(W.QWidget):
             x, y = positions.get(d.id, default)
             x, y = min(max(x, 0), array.shape[1]-1), min(max(y, 0), array.shape[0]-1)
             positions[d.id] = [x, y]
-            profiles = [extract_profile(d, 'X', y), extract_profile(d, 'Y', x)]
+            profiles = run_operation(self, 'Preparing image profiles',
+                lambda: [extract_profile(d, 'X', y), extract_profile(d, 'Y', x)])
             xc, yc = profiles[0].values[x, 0], profiles[1].values[y, 0]
             if self.transpose.isChecked():
                 xc, yc = yc, xc
@@ -574,3 +577,22 @@ class ImageViewer(W.QWidget):
             yc = bottom + ((x if self.transpose.isChecked() else y) + .5) * (top - bottom) / array.shape[0]
             position = f' | {event.inaxes.get_xlabel()} {xc:.6g}, {event.inaxes.get_ylabel()} {yc:.6g}'
         self.readout.setText(f'{d.name} | X pixel {x}, Y pixel {y}{position} | {d.columns[3]}: {text}')
+
+
+def image_channels(datasets, current):
+    views, file_views = [], None
+    for dataset in datasets:
+        channels = [v for v in channel_views(dataset) if is_image(v)]
+        views.extend(channels)
+        if dataset is current:
+            file_views = channels
+    if file_views is None:
+        file_views = [v for v in channel_views(current) if is_image(v)] if current else []
+    return views, file_views
+
+
+def prepare_images(selected, mode, lo, hi):
+    arrays = [raster(d) for d in selected]
+    limits = [contrast_limits(a, mode, lo, hi) for a in arrays]
+    geometries = [image_geometry(d, a.shape) for d, a in zip(selected, arrays)]
+    return arrays, limits, geometries

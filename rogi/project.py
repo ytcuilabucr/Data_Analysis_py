@@ -17,7 +17,7 @@ from .presets import validate_presets
 from .views import validate_saved_views
 
 
-def convert_folder(folder, destination):
+def convert_folder(folder, destination, *, cancel_check=None, before_save=None):
     """Recursively convert supported files into one grouped HDF5 project.
 
     Validate all inputs before saving, so a bad input cannot produce a partial
@@ -39,6 +39,8 @@ def convert_folder(folder, destination):
         raise ValueError('No CSV, TSV, TXT, DAT, SPM, or SXM files found in the selected folder or its subfolders.')
     datasets = []
     for path in paths:
+        if cancel_check:
+            cancel_check()
         relative = path.relative_to(folder)
         group = '' if relative.parent == Path('.') else relative.parent.as_posix()
         try:
@@ -62,6 +64,10 @@ def convert_folder(folder, destination):
                 datasets.append(dataset)
         except (ValueError, OSError, UnicodeError, csv.Error) as error:
             raise ValueError(f'{relative.as_posix()}: {error}') from error
+    if cancel_check:
+        cancel_check()
+    if before_save:
+        before_save()
     save_project(destination, datasets, dict(title=folder.name, xlabel='', ylabel=''))
     return len(datasets)
 

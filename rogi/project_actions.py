@@ -118,7 +118,10 @@ def convert_folder(self):
         destination += '.h5'
     if not self.confirm_discard():
         return
-    count = convert_project_folder(folder, destination)
+    count = self.run_operation("Converting folder",
+        lambda check, commit: convert_project_folder(folder, destination,
+            cancel_check=check, before_save=commit),
+        cancellable=True, cooperative=True)
     self.open_project(destination, confirm=False)
     self.statusBar().showMessage(f"Created and opened {count} dataset(s) in {destination}", 8000)
 
@@ -288,7 +291,8 @@ def save(self, save_project, save_as=False):
         path = Path(name)
         if path.suffix.lower() not in ('.h5', '.hdf5', '.json'):
             path = Path(str(path) + ('.json' if 'JSON' in chosen else '.h5'))
-    save_project(path, self.datasets, self.settings())
+    datasets, settings = self.datasets, self.settings()
+    self.run_operation("Saving project", lambda: save_project(path, datasets, settings))
     self.path = Path(path)
     self.remember_project(path)
     self.external_dirty = False
@@ -313,9 +317,8 @@ def open_project(self, path=None, *, confirm=True):
     if path is None:
         path, _ = W.QFileDialog.getOpenFileName(self, "Open project", "", "Rogi projects (*.h5 *.hdf5 *.json)")
     if path:
-        datasets, settings = load_project(path)
-        datasets, selected_id = consolidate_legacy(datasets, settings.get('selected_dataset_id'))
-        settings['selected_dataset_id'] = selected_id
+        datasets, settings = self.run_operation("Opening project",
+            lambda: read_project(path), cancellable=True)
         self.saved_views = deepcopy(settings.get('saved_views', {}))
         self.pipeline_presets = deepcopy(settings.get('pipeline_presets', {}))
         self.image_viewer.set_presets(self.pipeline_presets)
@@ -339,8 +342,8 @@ def open_project(self, path=None, *, confirm=True):
         self.result.clear()
         for field in ('title', 'xlabel', 'ylabel'):
             getattr(self, field).setText(settings.get(field, ''))
-        for d in datasets:
-            self.add_dataset(d)
+        self.datasets = datasets
+        self.refresh_history_view()
         if datasets:
             fallback = next((i for i, d in enumerate(datasets) if d.visible), 0)
             row = next((i for i, d in enumerate(datasets)
@@ -400,7 +403,7 @@ def export_plot(self):
 
 def closeEvent(self, event):
     if self.worker and self.worker.isRunning():
-        self.statusBar().showMessage("Wait for the current fit to finish before closing.")
+        self.statusBar().showMessage("Wait for the current operation to finish before closing.")
         event.ignore()
     elif self.confirm_discard():
         event.accept()
@@ -408,3 +411,10 @@ def closeEvent(self, event):
         event.ignore()
 
 
+
+
+def read_project(path):
+    datasets, settings = load_project(path)
+    datasets, selected_id = consolidate_legacy(datasets, settings.get('selected_dataset_id'))
+    settings['selected_dataset_id'] = selected_id
+    return datasets, settings

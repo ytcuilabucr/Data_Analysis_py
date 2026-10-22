@@ -80,7 +80,7 @@ An additional offscreen smoke check verified that fitting is initially hidden, t
 **Remaining work and limitations**
 
 - Validate native dialogs, keyboard editing, pan/zoom, and image appearance with representative user datasets.
-- Evaluate large-file responsiveness: imports, plotting, project loads, and saves still run on the UI thread. Projects load into memory and are rewritten on save.
+- Large-file responsiveness measured and addressed (2026-10-21): import parsing, conversion, project I/O, image preparation, and detached Agg main line/image display rendering now use workers. Editing is locked during work; eligible operations support cooperative cancellation. Projects still load into memory and are rewritten atomically on save. The offscreen 10 ms timer benchmark and before/after timing/memory results are in [docs/performance.md](docs/performance.md).
 - Undo/redo, fit cancellation, multiple plot windows, advanced signal processing, and arbitrary third-party HDF5 layouts are not implemented.
 - Windows/Linux native behavior and agreement with Igor Pro have not been established.
 - Zoom-only changes do not trigger an unsaved-change warning; explicitly saving preserves the current view.

@@ -2,6 +2,7 @@
 from dataclasses import dataclass, field
 from PySide6 import QtCore as C, QtWidgets as W
 from .grouping import group_path, path_key, path_label, node_label, field_labels
+from .operations import run_operation
 from .metadata import metadata_search_text, acquisition_timestamp, channel_count
 
 
@@ -235,7 +236,8 @@ class BrowserPanel(W.QWidget):
 
 
     def dataset_for_item(self, item):
-        return next((d for d in self.datasets if d.id == item.data(C.Qt.ItemDataRole.UserRole)), None)
+        dataset_id = item.data(C.Qt.ItemDataRole.UserRole)
+        return next((d for d in self.datasets if d.id == dataset_id), None)
 
 
     def selected_datasets(self):
@@ -323,22 +325,15 @@ class BrowserPanel(W.QWidget):
                              if valid else 'Invalid date: use YYYY-MM-DD')
             bounds.append(value if valid else None)
         lower, upper = bounds
+        filters = (group, query, self.favorites_filter.isChecked(),
+                   self.tag_filter.text().strip().casefold(),
+                   self.metadata_filter.text().strip().casefold(), lower, upper)
+        hidden_ids = run_operation(self, 'Filtering datasets',
+            lambda: filter_dataset_ids(self.datasets, *filters))
         with C.QSignalBlocker(self.browser):
             for row in range(self.browser.count()):
                 item = self.browser.item(row)
-                d = self.dataset_for_item(item)
-                matches = (group_path(d)[:len(group)] == group if isinstance(group, list)
-                           else group is None or d.group == group)
-                timestamp = acquisition_timestamp(d)
-                date = timestamp[:10] if timestamp else None
-                hidden = (not matches
-                          or query not in f"{d.name} {d.group} {d.source} {d.tags} {d.comments} {metadata_search_text(d)}".casefold()
-                          or (self.favorites_filter.isChecked() and not d.favorite)
-                          or self.tag_filter.text().strip().casefold() not in ' '.join(d.tags).casefold()
-                          or self.metadata_filter.text().strip().casefold() not in metadata_search_text(d).casefold()
-                          or lower is None or upper is None
-                          or (bool(lower or upper) and (date is None
-                              or (bool(lower) and date < lower) or (bool(upper) and date > upper))))
+                hidden = item.data(C.Qt.ItemDataRole.UserRole) in hidden_ids
                 item.setHidden(hidden)
                 if hidden:
                     item.setSelected(False)
@@ -400,3 +395,24 @@ class BrowserPanel(W.QWidget):
                 self.activate_dataset(target_id)
 
 
+
+
+def filter_dataset_ids(datasets, group, query, favorites, tag, metadata, lower, upper):
+    """Compute visibility without Qt access; empty text filters need no indexing."""
+    hidden = set()
+    for d in datasets:
+        matches = (group_path(d)[:len(group)] == group if isinstance(group, list)
+                   else group is None or d.group == group)
+        text = metadata_search_text(d).casefold() if query or metadata else ''
+        timestamp = acquisition_timestamp(d)
+        date = timestamp[:10] if timestamp else None
+        if (not matches
+                or (query and query not in f"{d.name} {d.group} {d.source} {d.tags} {d.comments} {text}".casefold())
+                or (favorites and not d.favorite)
+                or tag not in ' '.join(d.tags).casefold()
+                or metadata not in text
+                or lower is None or upper is None
+                or (bool(lower or upper) and (date is None
+                    or (bool(lower) and date < lower) or (bool(upper) and date > upper)))):
+            hidden.add(d.id)
+    return hidden

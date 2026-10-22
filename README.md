@@ -154,7 +154,7 @@ Both models minimize unweighted squared Y residuals. X is treated as exact. Erro
 - `rogi/ui.py`: desktop widgets, plot interactions, background fit worker.
 - `tests/`: synthetic numerical checks, invalid imports/fits, project round trips, offscreen desktop integration.
 
-This version targets moderate in-memory datasets. Import, project loading/saving, and plot drawing run on the UI thread and can pause with large files; only fitting is threaded. There is no fit cancellation, multiple plot-window management, scripting, plugins, advanced signal processing, or specialized format support yet. Project files preserve full source text and can be larger than the original data. Plot zoom, pan, history navigation, and applied presentation changes mark the project as modified and participate in save prompts.
+This version targets moderate in-memory datasets. Import parsing, folder conversion, project loading/saving, image preparation, and main line/image display rendering run in workers with a busy indicator and the same editing lock as fitting. Display rendering uses a detached Agg figure; Qt widgets stay on the UI thread. Read/import operations can discard cancelled results, and conversion checks cancellation between files and before saving. Atomic saves are not interrupted. See [measured timings, UI timer gaps, and memory use](docs/performance.md). There is no fit cancellation, multiple plot-window management, scripting, plugins, advanced signal processing, or specialized format support yet. Project files preserve full source text and can be larger than the original data. Plot zoom, pan, history navigation, and applied presentation changes mark the project as modified and participate in save prompts.
 
 ## Manual acceptance check
 

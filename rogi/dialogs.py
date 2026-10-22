@@ -9,6 +9,7 @@ from .metadata import attach_spectrum_metadata, metadata_fields
 from .spm import load_spm
 from .scanfile import bundle_channels
 from .grouping import path_label, path_key, partitions, varying_fields, field_labels, import_destinations
+from .operations import run_operation, Cancelled
 from .browser_panel import populate_group_tree
 
 
@@ -18,8 +19,8 @@ class ImportDialog(W.QDialog):
         self.setWindowTitle("Import preview — choose numeric columns")
         self.resize(800, 550)
         self.path = Path(path)
-        self.text = self.path.read_bytes().decode("utf-8")
-        instrument_table = spectrum_table(self.text) if self.path.suffix.lower() == '.dat' else None
+        self.text, instrument_table = run_operation(self, "Reading import",
+            lambda: read_text_import(self.path), cancellable=True)
         self.table_text = instrument_table if instrument_table is not None else self.text.removeprefix('\ufeff')
         self.dataset = None
         layout = W.QVBoxLayout(self)
@@ -90,12 +91,12 @@ class ImportDialog(W.QDialog):
     def import_data(self):
         try:
             selected = [i for i in range(self.columns.count()) if self.columns.item(i).checkState() == C.Qt.CheckState.Checked]
-            self.dataset = parse_text(self.table_text, self.delimiter.currentData(), self.header.isChecked(), selected,
-                                      self.path.stem, str(self.path))
-            self.dataset.source_text = self.text
-            if self.path.suffix.lower() == '.dat':
-                attach_spectrum_metadata(self.dataset, self.text)
+            delimiter, header = self.delimiter.currentData(), self.header.isChecked()
+            self.dataset = run_operation(self, "Importing data", lambda: parse_text_import(
+                self.path, self.text, self.table_text, delimiter, header, selected), cancellable=True)
             self.accept()
+        except Cancelled:
+            return
         except (ValueError, csv.Error) as error:
             self.message.setText(str(error))
 
@@ -107,7 +108,7 @@ class SpmImportDialog(W.QDialog):
         super().__init__(parent)
         self.setWindowTitle('Import SPM — choose channels')
         self.resize(800, 550)
-        self.channels = load_spm(path)
+        self.channels = run_operation(self, "Reading scan", lambda: load_spm(path), cancellable=True)
         self.datasets = []
         layout = W.QVBoxLayout(self)
         notice = W.QLabel('One dataset per file. Selected channels become columns; choose image channels in 2D Map.\n'
@@ -151,7 +152,13 @@ class SpmImportDialog(W.QDialog):
         if not self.datasets:
             self.message.setText('Select at least one channel.')
             return
-        self.datasets = [bundle_channels(self.datasets)]
+        try:
+            selected = self.datasets
+            self.datasets = [run_operation(self, "Importing scan",
+                lambda: bundle_channels(selected), cancellable=True)]
+        except Cancelled:
+            self.datasets = []
+            return
         self.accept()
 
 
@@ -384,3 +391,17 @@ class MetadataDialog(W.QDialog):
         buttons = W.QDialogButtonBox(W.QDialogButtonBox.StandardButton.Close)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
+
+
+def read_text_import(path):
+    text = path.read_bytes().decode('utf-8')
+    table = spectrum_table(text) if path.suffix.lower() == '.dat' else None
+    return text, table
+
+
+def parse_text_import(path, text, table_text, delimiter, header, selected):
+    dataset = parse_text(table_text, delimiter, header, selected, path.stem, str(path))
+    dataset.source_text = text
+    if path.suffix.lower() == '.dat':
+        attach_spectrum_metadata(dataset, text)
+    return dataset

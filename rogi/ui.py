@@ -15,7 +15,7 @@ from PySide6 import QtCore as C, QtWidgets as W, QtGui as G
 from matplotlib.figure import Figure
 from .navigation import PlotNavigationToolbar
 from matplotlib.transforms import Bbox
-from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
+from .canvas import ResponsiveCanvas as FigureCanvasQTAgg
 from matplotlib.widgets import SpanSelector, Cursor, RectangleSelector
 from .browser_panel import BrowserPanel, BrowserState, BrowserItem, DatasetBrowser, populate_group_tree
 from .plot_controls_panel import PlotControlsPanel
@@ -26,6 +26,7 @@ from . import dataset_actions
 from .table_actions import DataTable
 from . import table_actions
 from . import plot_actions
+from .operations import run_operation, set_editing_enabled, Cancelled
 from .history import ChangeCommand, CellCommand, CellsCommand
 from .grouping import group_path, path_key, path_label, node_label, partitions, varying_fields, field_labels, import_destinations
 from .spm import load_spm
@@ -268,10 +269,15 @@ class MainWindow(W.QMainWindow):
         self.selection_changed()
         self.redraw()
 
+    def run_operation(self, label, function, **options):
+        return run_operation(self, label, function, **options)
+
     def guard(self, function):
         try:
             return function()
-        except (ValueError, OSError, csv.Error, UnicodeError) as error:
+        except Cancelled:
+            return False
+        except Exception as error:
             self.error(str(error))
             return False
 
@@ -542,16 +548,7 @@ class MainWindow(W.QMainWindow):
         self.worker.result.connect(self.fit_ready)
         self.worker.failed.connect(self.error)
         self.worker.finished.connect(self.fit_finished)
-        self.centralWidget().setEnabled(False)
-        self.edit_menu.setEnabled(False)
-        self.file_menu.setEnabled(False)
-        for action in self.project_actions.values():
-            action.setEnabled(False)
-        self.copy_action.setEnabled(False)
-        self.paste_action.setEnabled(False)
-        self.undo_action.setEnabled(False)
-        self.redo_action.setEnabled(False)
-        self.findChild(W.QToolBar).setEnabled(False)
+        set_editing_enabled(self, False)
         self.statusBar().showMessage("Fitting…")
         self.worker.start()
 
@@ -562,15 +559,7 @@ class MainWindow(W.QMainWindow):
         self.redraw()
 
     def fit_finished(self):
-        self.centralWidget().setEnabled(True)
-        self.edit_menu.setEnabled(True)
-        self.file_menu.setEnabled(True)
-        for action in self.project_actions.values():
-            action.setEnabled(True)
-        self.update_clipboard_actions()
-        self.undo_action.setEnabled(self.history.canUndo())
-        self.redo_action.setEnabled(self.history.canRedo())
-        self.findChild(W.QToolBar).setEnabled(True)
+        set_editing_enabled(self, True)
         self.statusBar().showMessage("Fit operation finished", 4000)
 
     def refresh_saved_views_menu(self):

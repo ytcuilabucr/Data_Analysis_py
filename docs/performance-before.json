@@ -1,0 +1,218 @@
+{
+  "environment": {
+    "machine": "macOS-26.6-arm64-arm-64bit-Mach-O",
+    "processor": "arm",
+    "python": "3.13.16 (v3.13.16:cbc944f4bc5, Sep 30 2026, 16:01:51) [Clang 21.0.0 (clang-2100.1.1.101)]",
+    "packages": {
+      "numpy": "2.5.4",
+      "scipy": "1.18.1",
+      "h5py": "3.16.0",
+      "matplotlib": "3.11.2",
+      "PySide6": "6.12.0",
+      "pytest": "9.1.1"
+    }
+  },
+  "clock": "perf_counter; 10 ms precise QTimer",
+  "results": [
+    {
+      "seconds": 6.84458320797421,
+      "max_gap_ms": 6867.947457998525,
+      "ticks": 13,
+      "peak_rss_mb": 762.1875,
+      "operation": "open",
+      "input": "260813.files.rogi.h5"
+    },
+    {
+      "seconds": 0.6425902079790831,
+      "max_gap_ms": 643.7872080132365,
+      "ticks": 16,
+      "peak_rss_mb": 415.84375,
+      "operation": "save",
+      "input": "260813.files.rogi.h5"
+    },
+    {
+      "seconds": 0.1484348340309225,
+      "max_gap_ms": 167.70950000500306,
+      "ticks": 13,
+      "peak_rss_mb": 544.25,
+      "operation": "first_plot",
+      "input": "260813.files.rogi.h5"
+    },
+    {
+      "seconds": 7.580022042035125,
+      "max_gap_ms": 7603.838499984704,
+      "ticks": 14,
+      "peak_rss_mb": 863.734375,
+      "operation": "open",
+      "input": "260813.rogi.h5"
+    },
+    {
+      "seconds": 1.4937907920102589,
+      "max_gap_ms": 1494.960916985292,
+      "ticks": 16,
+      "peak_rss_mb": 780.578125,
+      "operation": "save",
+      "input": "260813.rogi.h5"
+    },
+    {
+      "seconds": 0.5356311249779537,
+      "max_gap_ms": 561.7577499942854,
+      "ticks": 12,
+      "peak_rss_mb": 775.421875,
+      "operation": "first_plot",
+      "input": "260813.rogi.h5"
+    },
+    {
+      "seconds": 6.878220750018954,
+      "max_gap_ms": 6907.735291984864,
+      "ticks": 13,
+      "peak_rss_mb": 759.375,
+      "operation": "open",
+      "input": "260813A.h5"
+    },
+    {
+      "seconds": 0.6447379169985652,
+      "max_gap_ms": 644.7915000026114,
+      "ticks": 15,
+      "peak_rss_mb": 416.578125,
+      "operation": "save",
+      "input": "260813A.h5"
+    },
+    {
+      "seconds": 0.15065191697794944,
+      "max_gap_ms": 170.58562504826114,
+      "ticks": 14,
+      "peak_rss_mb": 543.9375,
+      "operation": "first_plot",
+      "input": "260813A.h5"
+    },
+    {
+      "seconds": 6.841909250011668,
+      "max_gap_ms": 6864.87212497741,
+      "ticks": 14,
+      "peak_rss_mb": 759.3125,
+      "operation": "open",
+      "input": "260813B.h5"
+    },
+    {
+      "seconds": 0.6450146669521928,
+      "max_gap_ms": 645.0622919946909,
+      "ticks": 15,
+      "peak_rss_mb": 416.6875,
+      "operation": "save",
+      "input": "260813B.h5"
+    },
+    {
+      "seconds": 0.15066637500422075,
+      "max_gap_ms": 169.6048749727197,
+      "ticks": 14,
+      "peak_rss_mb": 544.46875,
+      "operation": "first_plot",
+      "input": "260813B.h5"
+    },
+    {
+      "seconds": 6.909768000012264,
+      "max_gap_ms": 6961.20883297408,
+      "ticks": 11,
+      "peak_rss_mb": 800.375,
+      "operation": "open",
+      "input": "260813C.h5"
+    },
+    {
+      "seconds": 0.6501691250014119,
+      "max_gap_ms": 651.3492089579813,
+      "ticks": 15,
+      "peak_rss_mb": 415.890625,
+      "operation": "save",
+      "input": "260813C.h5"
+    },
+    {
+      "seconds": 0.13383512501604855,
+      "max_gap_ms": 150.98754200153053,
+      "ticks": 14,
+      "peak_rss_mb": 543.21875,
+      "operation": "first_plot",
+      "input": "260813C.h5"
+    },
+    {
+      "seconds": 6.944820334028918,
+      "max_gap_ms": 7008.893291989807,
+      "ticks": 8,
+      "peak_rss_mb": 761.171875,
+      "operation": "open",
+      "input": "260813D.h5"
+    },
+    {
+      "seconds": 0.6493945409893058,
+      "max_gap_ms": 650.5862919730134,
+      "ticks": 15,
+      "peak_rss_mb": 416.015625,
+      "operation": "save",
+      "input": "260813D.h5"
+    },
+    {
+      "seconds": 0.14935270795831457,
+      "max_gap_ms": 169.09399995347485,
+      "ticks": 14,
+      "peak_rss_mb": 543.9375,
+      "operation": "first_plot",
+      "input": "260813D.h5"
+    },
+    {
+      "seconds": 1.5235651670373045,
+      "max_gap_ms": 2165.6371250282973,
+      "ticks": 6,
+      "peak_rss_mb": 1068.78125,
+      "operation": "open",
+      "input": "synthetic.h5"
+    },
+    {
+      "seconds": 0.5400487080332823,
+      "max_gap_ms": 547.9809999815188,
+      "ticks": 15,
+      "peak_rss_mb": 442.859375,
+      "operation": "save",
+      "input": "synthetic.h5"
+    },
+    {
+      "seconds": 0.6739731659763493,
+      "max_gap_ms": 1265.6570000108331,
+      "ticks": 6,
+      "peak_rss_mb": 776.5,
+      "operation": "first_plot",
+      "input": "synthetic.h5"
+    },
+    {
+      "seconds": 0.018523082952015102,
+      "max_gap_ms": 26.470958022400737,
+      "ticks": 15,
+      "peak_rss_mb": 222.359375,
+      "operation": "import",
+      "input": "08151451.0_00001.spm"
+    },
+    {
+      "seconds": 1.629565957991872,
+      "max_gap_ms": 1629.6601660433225,
+      "ticks": 16,
+      "peak_rss_mb": 376.9375,
+      "operation": "conversion",
+      "input": "260813"
+    },
+    {
+      "seconds": 0.19257524999557063,
+      "max_gap_ms": 192.6615000120364,
+      "ticks": 15,
+      "peak_rss_mb": 821.265625,
+      "operation": "import",
+      "input": "large.sxm"
+    },
+    {
+      "seconds": 0.7376279579475522,
+      "max_gap_ms": 738.8390420237556,
+      "ticks": 15,
+      "peak_rss_mb": 844.078125,
+      "operation": "conversion",
+      "input": "synthetic"
+    }
+  ]
+}
