@@ -5,6 +5,41 @@ import re
 from .metadata import metadata_fields, metadata_sort_key
 
 
+TITLE_PREFIX = 'Title: '
+PAIR = re.compile(r'\s*(.+?)\s*=\s*(.+?)\s*$')
+NAMED_NUMBER = re.compile(r'([A-Za-z]+)([+-]?\d+(?:\.\d+)?)')
+NUMBER_UNIT = re.compile(r'(\d+(?:\.\d+)?)([A-Za-z]+)')
+
+
+def title_fields(dataset):
+    """Grouping-only fields from explicit patterns in the dataset title.
+
+    Segments split on ',' or ';'. ``key = value`` gives ``key``; otherwise
+    '_'/space tokens like ``power100`` give ``power`` = 100 and ``4MHz`` gives
+    ``MHz`` = 4 MHz. Other tokens are ignored. Kept out of metadata_fields so
+    search, maps and import suggestions never treat titles as instrument metadata.
+    """
+    pairs = []
+    for segment in re.split(r'[,;]', dataset.name):
+        if match := PAIR.fullmatch(segment):
+            pairs.append(match.groups())
+            continue
+        for token in re.split(r'[_\s]+', segment):
+            if match := NAMED_NUMBER.fullmatch(token):
+                pairs.append(match.groups())
+            elif match := NUMBER_UNIT.fullmatch(token):
+                pairs.append((match[2], f'{match[1]} {match[2]}'))
+    fields, counts = {}, Counter()
+    for key, value in pairs:
+        counts[key] += 1
+        fields[TITLE_PREFIX + key + (f' [{counts[key]}]' if counts[key] > 1 else '')] = value
+    return fields
+
+
+def grouping_fields(dataset):
+    return {**metadata_fields(dataset), **title_fields(dataset)}
+
+
 def group_path(dataset):
     return deepcopy(dataset.group_path) or ([{'field': None, 'value': dataset.group}] if dataset.group else [])
 
@@ -82,7 +117,7 @@ def path_label(path, labels=None):
 
 def partitions(datasets, levels, append=False):
     """Return ordered (dataset, path) pairs; missing values always sort last."""
-    fields = {d.id: metadata_fields(d) for d in datasets}
+    fields = {d.id: grouping_fields(d) for d in datasets}
     def split(members, path, depth):
         if depth == len(levels):
             return [(d, deepcopy(path)) for d in members]
@@ -105,7 +140,7 @@ def partitions(datasets, levels, append=False):
 def varying_fields(datasets, levels=(), append=False):
     buckets = {}
     for d, path in partitions(datasets, levels, append):
-        buckets.setdefault(path_key(path), []).append(metadata_fields(d))
+        buckets.setdefault(path_key(path), []).append(grouping_fields(d))
     used = {key for key, _ in levels}
     candidates = set()
     for fields in buckets.values():

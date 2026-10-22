@@ -5,10 +5,10 @@ from copy import deepcopy
 from pathlib import Path
 from PySide6 import QtCore as C, QtWidgets as W
 from .core import parse_text, spectrum_table
-from .metadata import attach_spectrum_metadata, metadata_fields
+from .metadata import attach_spectrum_metadata
 from .spm import load_spm
 from .scanfile import bundle_channels
-from .grouping import path_label, path_key, partitions, varying_fields, field_labels, import_destinations
+from .grouping import path_label, path_key, partitions, varying_fields, field_labels, import_destinations, grouping_fields
 from .operations import run_operation, Cancelled
 from .browser_panel import populate_group_tree
 from .screen import fit_to_screen
@@ -220,14 +220,15 @@ class ImportGroupDialog(W.QDialog):
 class MetadataGroupingDialog(W.QDialog):
     def __init__(self, datasets, parent=None, all_datasets=None):
         super().__init__(parent)
-        self.setWindowTitle('Group by metadata')
+        self.setWindowTitle('Group by metadata or title')
         fit_to_screen(self, 880, 620)
         self.selected_files = list(datasets)
         self.all_files = list(all_datasets) if all_datasets is not None else self.selected_files
         self.level_rows = []
         layout = W.QVBoxLayout(self)
         note = W.QLabel('Add levels to subdivide each parent group. Only fields that vary within a parent '
-                        'are offered. Missing values form a “Missing value” subgroup.')
+                        'are offered. Missing values form a “Missing value” subgroup. “Title:” fields come from '
+                        'file titles: “power = 10” or “power100” give power, “4MHz” gives MHz.')
         note.setWordWrap(True)
         layout.addWidget(note)
         form = W.QFormLayout()
@@ -322,10 +323,11 @@ class MetadataGroupingDialog(W.QDialog):
         if not self.levels:
             if len(self.datasets) < 2:
                 text = f'{len(self.datasets)} file(s) in scope. Choose All project files or select at least two files.'
-            elif not any(metadata_fields(d) for d in self.datasets):
-                text = 'These files have no structured metadata. Reimport the original instrument files.'
+            elif not any(grouping_fields(d) for d in self.datasets):
+                text = ('These files have no structured metadata or title fields such as "power = 10" '
+                        'or "power100". Reimport the original instrument files or rename them.')
             else:
-                text = 'No varying metadata fields within these parent groups. Try another scope or Replace grouping.'
+                text = 'No varying metadata or title fields within these parent groups. Try another scope or Replace grouping.'
             self.summary.setText(text)
             return
         pairs = partitions(self.datasets, self.levels, self.mode.currentIndex() == 1)

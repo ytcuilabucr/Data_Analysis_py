@@ -191,3 +191,26 @@ def test_group_labels_simplify_and_disambiguate_across_project():
     finally:
         window.dirty = False
         window.close()
+
+
+def test_title_fields_parse_pairs_and_tokens_for_grouping_only():
+    from rogi.grouping import title_fields
+    from rogi.metadata import metadata_fields
+    d = scan('5 nm', '1 Hz')
+    d.name = 'YSLAOTF_laserpower100_4MHz_2107Gain1_'
+    assert title_fields(d) == {'Title: laserpower': '100', 'Title: MHz': '4 MHz'}
+    d.name = 'YSL AOTF - 1.power = 10; run2_run3'
+    assert title_fields(d) == {'Title: YSL AOTF - 1.power': '10', 'Title: run': '2', 'Title: run [2]': '3'}
+    assert not any(key.startswith('Title: ') for key in metadata_fields(d))
+
+
+def test_partitions_group_by_title_power_numerically():
+    ds = []
+    for name in ('AOTF power = 100', 'AOTF power = 10', 'AOTF power = 30', 'AOTF power = 10'):
+        d = scan('5 nm', '1 Hz')
+        d.name = name
+        ds.append(d)
+    key = 'Title: AOTF power'
+    assert key in varying_fields(ds)
+    result = partitions(ds, [(key, False)])
+    assert [path[-1]['value'] for _, path in result] == ['10', '10', '30', '100']

@@ -198,7 +198,7 @@ class BrowserPanel(W.QWidget):
         self.organization_actions = {}
         for label, function in [
                 ("Rename…", lambda: self.action_requested.emit('rename_dataset', ())), ("Assign group…", lambda: self.action_requested.emit('assign_group', ())),
-                ("Group by metadata…", lambda: self.action_requested.emit('group_by_metadata', ())),
+                ("Group by metadata or title…", lambda: self.action_requested.emit('group_by_metadata', ())),
                 ("View metadata…", lambda: self.action_requested.emit('view_metadata', ())),
                 ("Favorite selected", lambda: self.action_requested.emit('annotate_selected', ('favorite', True,))),
                 ("Unfavorite selected", lambda: self.action_requested.emit('annotate_selected', ('favorite', False,))),

@@ -13,10 +13,11 @@ Select a dataset and choose **Organize → View metadata…** to inspect instrum
 
 Browser search matches metadata names, original and parsed values, and original/ISO timestamps. Try `SR830`, `2026-08-14`, or `TimeConstant[1]=100 ms`.
 
-**Organize → Group by metadata…** supports nested groups:
+**Organize → Group by metadata or title…** supports nested groups:
 
 - Choose **Selected files** or **All project files**, with file counts shown for each scope.
 - **Add subgroup within existing groups** is the default: grouping `spm` files by scan size keeps `spm` as the parent and adds scan-size children. Choose **Replace grouping** explicitly only to discard the existing hierarchy.
+- Besides instrument metadata, fields prefixed **Title:** are read from each file's title. A title is split at `,` or `;`; a `key = value` segment gives field `key` (for example `YSL AOTF - 1.power = 10` gives `Title: YSL AOTF - 1.power` = `10`). Other segments are split at `_` and spaces: `laserpower100` gives `Title: laserpower` = `100` and `4MHz` gives `Title: MHz` = `4 MHz`. Repeated keys are numbered (`[2]`), and other words are ignored. Title fields are used only for grouping: search, maps and import suggestions still use instrument metadata alone. Renaming a file changes its title fields but not groups already assigned.
 - Choose the first metadata field, then **Add subgroup level** for each additional subdivision. Each level offers fields with at least two distinct nonblank values within at least one parent group. Remove a level to simplify the hierarchy.
 - Set ascending or descending order independently at each level. Numeric values sort numerically, text alphabetically; units are not converted. Original trimmed values remain distinct.
 - Inspect the expandable preview: each parent and subgroup shows its file count. The summary counts final groups and files. Missing values form explicit **Missing value** subgroups, sorted last in either direction.
