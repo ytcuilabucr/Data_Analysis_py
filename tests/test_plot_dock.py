@@ -24,7 +24,7 @@ def window(app):
 
 def float_dock(window, app, index):
     dock = window.plot_docks[index]
-    window.float_actions[dock.objectName()].setChecked(True)
+    window.float_actions[dock.objectName()].trigger()
     app.processEvents()
     assert dock.isFloating() and dock.widget().window() is dock
     return dock

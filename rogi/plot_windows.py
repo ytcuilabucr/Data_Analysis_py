@@ -80,7 +80,9 @@ def build_menu(self, view_menu):
     for dock in self.docks:
         action = menu.addAction(dock.windowTitle())
         action.setCheckable(True)
-        action.toggled.connect(dock.setFloating)
+        # Only on clicks: reacting to toggled would re-float the dock in the middle
+        # of Qt's own drag (topLevelChanged → setChecked) and crash it.
+        action.triggered.connect(lambda checked, dock=dock: dock.setFloating(checked))
         dock.topLevelChanged.connect(action.setChecked)
         self.float_actions[dock.objectName()] = action
     menu.addSeparator()
