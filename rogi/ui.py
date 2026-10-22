@@ -60,6 +60,7 @@ class MainWindow(W.QMainWindow):
         self._build_statistics(layout)
         self._build_fitting(layout)
         self._build_connections()
+        self.restore_plot_layout()
 
     @property
     def datasets(self):
@@ -126,7 +127,11 @@ class MainWindow(W.QMainWindow):
         splitter.addWidget(self.browser_panel)
 
     def _build_center(self, splitter):
-        center = W.QSplitter(C.Qt.Orientation.Vertical)
+        # A nested main window keeps the plot dock above the table in the middle
+        # column; floated, the plot becomes its own window (e.g. on another monitor).
+        center = W.QMainWindow()
+        center.setWindowFlags(C.Qt.WindowType.Widget)
+        self.plot_host = center
         splitter.addWidget(center)
         plot_widget = W.QWidget()
         plot_layout = W.QVBoxLayout(plot_widget)
@@ -145,7 +150,17 @@ class MainWindow(W.QMainWindow):
         self.image_viewer.preview_requested.connect(lambda name: self.guard(lambda: self.preview_image_preset(name)))
         self.plot_tabs.addTab(self.image_viewer, '2D Map')
         self.plot_tabs.currentChanged.connect(self.plot_tab_changed)
-        center.addWidget(self.plot_tabs)
+        self.plot_dock = W.QDockWidget("Plot", center)
+        self.plot_dock.setObjectName("plot_dock")
+        self.plot_dock.setFeatures(W.QDockWidget.DockWidgetFeature.DockWidgetMovable
+                                   | W.QDockWidget.DockWidgetFeature.DockWidgetFloatable)
+        self.plot_dock.setAllowedAreas(C.Qt.DockWidgetArea.TopDockWidgetArea)
+        self.plot_dock.setWidget(self.plot_tabs)
+        center.addDockWidget(C.Qt.DockWidgetArea.TopDockWidgetArea, self.plot_dock)
+        self.float_plot = self.show_fitting.parent().addAction("Plot in separate window")
+        self.float_plot.setCheckable(True)
+        self.float_plot.toggled.connect(self.plot_dock.setFloating)
+        self.plot_dock.topLevelChanged.connect(self.float_plot.setChecked)
         self.table = W.QTableView()
         self.table.setSelectionMode(W.QAbstractItemView.SelectionMode.ExtendedSelection)
         self.table.setSelectionBehavior(W.QAbstractItemView.SelectionBehavior.SelectItems)
@@ -160,9 +175,10 @@ class MainWindow(W.QMainWindow):
             self.table.addAction(action)
             self.edit_menu.addAction(action)
             action.setEnabled(False)
-        center.addWidget(self.table)
+        center.setCentralWidget(self.table)
         self.image_viewer.show_table.toggled.connect(self.update_table_visibility)
-        center.setSizes([580, 220])
+        self.plot_dock.topLevelChanged.connect(self.update_table_visibility)
+        center.resizeDocks([self.plot_dock], [580], C.Qt.Orientation.Vertical)
 
     def _build_analysis_container(self, splitter):
         panel = W.QWidget()
@@ -525,6 +541,12 @@ class MainWindow(W.QMainWindow):
 
     def plot_tab_changed(self, index):
         return plot_actions.plot_tab_changed(self, index)
+
+    def save_plot_layout(self):
+        return plot_actions.save_plot_layout(self)
+
+    def restore_plot_layout(self):
+        return plot_actions.restore_plot_layout(self)
 
     def redraw(self):
         return plot_actions.redraw(self)

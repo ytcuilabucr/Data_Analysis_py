@@ -33,10 +33,26 @@ class OperationWorker(C.QThread):
             self.failed.emit(error)
 
 
+def coordinator(widget):
+    """The window that owns project actions and the editing lock.
+
+    widget.window() is not enough: from inside a floating dock it is the dock.
+    """
+    while widget is not None:
+        if hasattr(widget, 'project_actions'):
+            return widget
+        widget = widget.parentWidget()
+    return None
+
+
 def set_editing_enabled(window, enabled):
     """Shared by fits and other operations; preserve the fit editing boundary."""
     enabled = enabled and not getattr(window, 'operation_active', False)
     window.centralWidget().setEnabled(enabled)
+    # The plot dock floats as its own window; lock it explicitly rather than
+    # relying on where it sits in the widget tree.
+    if getattr(window, 'plot_dock', None) is not None:
+        window.plot_dock.widget().setEnabled(enabled)
     window.edit_menu.setEnabled(enabled)
     window.file_menu.setEnabled(enabled)
     # View actions can also mutate plot state during a worker operation.
@@ -83,14 +99,10 @@ def run_operation(parent, label, function, *, cancellable=False, cooperative=Fal
     Cooperative callables receive check_cancelled and begin_commit callbacks.
     Saves are deliberately non-cancellable once writing starts.
     """
-    root = parent.window() if parent is not None else None
-    ancestor = parent
-    while ancestor is not None:
-        if hasattr(ancestor, 'project_actions'):
-            root = ancestor
-            break
-        ancestor = ancestor.parentWidget()
-    coordinated = root is not None and hasattr(root, 'project_actions')
+    root = coordinator(parent)
+    coordinated = root is not None
+    if not coordinated:
+        root = parent.window() if parent is not None else None
     if coordinated and getattr(root, 'operation_active', False):
         raise ValueError('Wait for the current operation to finish.')
     loop = C.QEventLoop()

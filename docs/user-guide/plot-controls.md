@@ -2,6 +2,10 @@
 
 [User guide](index.md) · [Validation and limitations](../limitations.md)
 
+## Plot window
+
+Choose **View → Plot in separate window**, or click the float button on the **Plot** title bar, to move the line plot and 2D map into their own window, for example on a second monitor. The data table then fills the middle column. Undo, Save, Import and the other main-window shortcuts keep working while the plot window has focus, and the plot is locked like the rest of the window during imports, saves and fits. Uncheck the menu item or double-click the plot window's title bar to dock it again. Whether the plot is docked or floating, and where it floats, is remembered per computer, not in the project; a plot window saved on a monitor that is no longer connected reopens on one that is. On macOS the floating plot is a tool window: it stays above the main window and has no full-screen or minimize button. The cursor coordinates and plot hints still appear in the main window's status bar.
+
 ## Plot controls
 
 Enable **View → Show plot controls** for advanced presentation options; the default interface stays compact.

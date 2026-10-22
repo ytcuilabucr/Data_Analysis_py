@@ -6,6 +6,7 @@ the whole window per click (visible flashing and swallowed input).
 """
 from contextlib import contextmanager
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
+from .operations import coordinator
 
 
 _held = [0]
@@ -35,7 +36,7 @@ class ResponsiveCanvas(FigureCanvasQTAgg):
         if _held[0]:
             _held_canvases.add(self)
             return
-        root = self.window()
+        root = coordinator(self) or self.window()
         if getattr(root, 'operation_active', False):
             # An earlier draw_idle may arrive inside an I/O worker's event loop.
             # Do not render the figure while the operation holds the editing lock;

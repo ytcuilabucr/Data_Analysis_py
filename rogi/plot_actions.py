@@ -343,7 +343,21 @@ def limits_changed(self, axis, axes):
 
 
 def update_table_visibility(self, *args):
-    self.table.setVisible(self.plot_tabs.currentIndex() == 0 or self.image_viewer.show_table.isChecked())
+    # With the plot floated the table is all that is left in the middle column.
+    self.table.setVisible(self.plot_tabs.currentIndex() == 0 or self.image_viewer.show_table.isChecked()
+                          or self.plot_dock.isFloating())
+
+
+def save_plot_layout(self):
+    """Dock arrangement is per machine (monitors differ), so it lives in QSettings, not the project."""
+    self.preferences.setValue('plot_layout', self.plot_host.saveState())
+
+
+def restore_plot_layout(self):
+    # restoreState moves a floating plot saved on a disconnected monitor onto a present one.
+    state = self.preferences.value('plot_layout')
+    if state is not None:
+        self.plot_host.restoreState(state)
 
 
 def plot_tab_changed(self, index):

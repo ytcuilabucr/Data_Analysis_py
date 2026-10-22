@@ -410,6 +410,7 @@ def closeEvent(self, event):
         self.statusBar().showMessage("Wait for the current operation to finish before closing.")
         event.ignore()
     elif self.confirm_discard():
+        self.save_plot_layout()
         event.accept()
     else:
         event.ignore()
