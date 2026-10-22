@@ -8,6 +8,7 @@ from copy import deepcopy
 from PySide6 import QtCore as C, QtWidgets as W
 from .core import remove_datasets
 from .history import ChangeCommand
+from .browser_panel import FAVORITE
 from .grouping import partitions, path_label, path_key
 from .dialogs import MetadataGroupingDialog, MetadataDialog
 
@@ -20,10 +21,23 @@ def edit_tags(self):
     selected = self.selected_datasets()
     if not selected:
         return
-    value, ok = W.QInputDialog.getText(self, 'Edit tags', 'Tags, comma separated (replaces selected tags):',
-                                     text=', '.join(selected[0].tags) if len(selected) == 1 else '')
+    first = selected[0]
+    text = ', '.join(([FAVORITE] if first.favorite else []) + first.tags) if len(selected) == 1 else ''
+    value, ok = W.QInputDialog.getText(self, 'Edit tags', f'Tags, comma separated; {FAVORITE} marks a favorite '
+                                       '(replaces selected tags):', text=text)
     if ok:
-        self.annotate_selected('tags', list(dict.fromkeys(tag.strip() for tag in value.split(',') if tag.strip())))
+        tags = list(dict.fromkeys(tag.strip() for tag in value.split(',') if tag.strip()))
+        # The favorite flag is stored apart from the tags but edited as one of them.
+        favorite, tags = FAVORITE in tags, [tag for tag in tags if tag != FAVORITE]
+        both = any(d.favorite != favorite for d in selected) and any(d.tags != tags for d in selected)
+        if both:  # One undo step; an empty macro would still mark the project modified.
+            self.history.beginMacro('Edit tags')
+        try:
+            self.annotate_selected('favorite', favorite)
+            self.annotate_selected('tags', tags)
+        finally:
+            if both:
+                self.history.endMacro()
 
 
 def edit_comments(self):

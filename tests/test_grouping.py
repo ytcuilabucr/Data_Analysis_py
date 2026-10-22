@@ -4,6 +4,7 @@ from PySide6 import QtWidgets as W
 from rogi.core import parse_dat
 from rogi.grouping import partitions, varying_fields, path_key
 from rogi.project import save_project, load_project
+from rogi.browser_panel import LABEL_ROLE
 from rogi.ui import MainWindow, MetadataGroupingDialog
 
 SIZE = 'Scan[1].Size[1]'
@@ -44,9 +45,10 @@ def test_nested_undo_filters_save_copy_and_manual_group(tmp_path, extension):
         shown = [window.dataset_for_item(window.browser.item(i)).id for i in range(3)
                  if not window.browser.item(i).isHidden()]
         assert set(shown) == {ds[0].id, ds[2].id}
-        tree_parent = window.group_tree.topLevelItem(1)
-        assert tree_parent.text(1) == '2'
+        tree_parent = window.browser.topLevelItem(1)
+        assert tree_parent.text(0).endswith('(2)')
         assert tree_parent.childCount() == 2
+        assert window.browser.topLevelItem(0).isHidden()  # The other size has no shown datasets.
         copied = ds[0].derived()
         copied.group_path[0]['value'] = 'changed'
         assert ds[0].group_path == path
@@ -125,8 +127,8 @@ def test_default_metadata_grouping_keeps_spm_parent_and_siblings(monkeypatch, tm
         assert all(d.group_path[0] == {'field': None, 'value': 'spm'} for d in scans)
         assert all(len(d.group_path) == 2 for d in scans)
         assert [(d.group, d.group_path) for d in siblings] == [('Spectrum', []), ('sxm', [])]
-        assert {window.group_tree.topLevelItem(i).text(0)
-                for i in range(window.group_tree.topLevelItemCount())} == {'spm', 'Spectrum', 'sxm'}
+        assert {group.data(0, LABEL_ROLE) for group in window.browser.groups()
+                if group.parent() is None} == {'spm', 'Spectrum', 'sxm'}
         target = tmp_path / 'nested.h5'
         save_project(target, window.datasets, {})
         loaded, _ = load_project(target)
@@ -180,12 +182,16 @@ def test_group_labels_simplify_and_disambiguate_across_project():
         for d in (first, second):
             window.add_dataset(d)
         window.refresh_history_view()
-        labels = [window.group_tree.topLevelItem(i).text(0) for i in range(2)]
+        groups = [window.browser.topLevelItem(i) for i in range(2)]
+        labels = [group.data(0, LABEL_ROLE) for group in groups]
         assert all('Scan[1]' not in label and 'Other[1]' not in label for label in labels)
         assert labels[0].split(' = ')[0] != labels[1].split(' = ')[0]
         for i, d in enumerate((first, second)):
+            assert window.browser.item(i).parent() is groups[i]
+            assert d.group_path[0]['field'] in groups[i].toolTip(0)
+        window.browser_panel.tree_toggle.setChecked(False)  # The flat list names the group instead.
+        for i in range(2):
             assert labels[i] in window.browser.item(i).text()
-            assert d.group_path[0]['field'] in window.group_tree.topLevelItem(i).toolTip(0)
         window.group_filter.setCurrentIndex(window.group_filter.findData(first.group_path))
         assert not window.browser.item(0).isHidden() and window.browser.item(1).isHidden()
     finally:
@@ -224,7 +230,7 @@ def test_field_value_search_matches_title_values_exactly():
         d.name = name
         ds.append(d)
     def shown(query):
-        hidden = filter_dataset_ids(ds, None, query.casefold(), False, '', '', '', '')
+        hidden = filter_dataset_ids(ds, None, query.casefold())
         return [d.name[-3:].strip(' =') for d in ds if d.id not in hidden]
     assert shown('power = 10') == ['10']
     assert shown('Power=30') == ['30']

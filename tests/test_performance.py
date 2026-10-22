@@ -177,7 +177,7 @@ def test_legacy_project_first_plot_and_metadata_filter(performance_window):
     datasets, _ = load_project(path)
     w.datasets = datasets
     responsive(lambda: (w.refresh_history_view(), w.canvas.draw()))
-    expected = filter_dataset_ids(datasets, None, 'bias', False, '', '', '', '')
+    expected = filter_dataset_ids(datasets, None, 'bias')
     responsive(lambda: w.search.setText('bias'))
     actual = {w.browser.item(i).data(C.Qt.ItemDataRole.UserRole)
               for i in range(w.browser.count()) if w.browser.item(i).isHidden()}

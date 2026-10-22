@@ -137,17 +137,15 @@ class MainWindow(W.QMainWindow):
             lambda name, args: self.guard(lambda: getattr(self, name)(*args)))
         self.browser_panel.attributes_requested.connect(self.change_attributes)
         self.browser = self.browser_panel.browser
-        self.date_from = self.browser_panel.date_from
-        self.date_to = self.browser_panel.date_to
-        self.favorites_filter = self.browser_panel.favorites_filter
         self.group_filter = self.browser_panel.group_filter
         self.kind_filter = self.browser_panel.kind_filter
-        self.group_tree = self.browser_panel.group_tree
-        self.metadata_filter = self.browser_panel.metadata_filter
         self.organization_actions = self.browser_panel.organization_actions
         self.search = self.browser_panel.search
         self.selection_info = self.browser_panel.selection_info
-        self.tag_filter = self.browser_panel.tag_filter
+        self.tag_button = self.browser_panel.tag_button
+        tree_toggle = self.browser_panel.tree_toggle
+        tree_toggle.setChecked(self.preferences.value('browser_tree', True, type=bool))
+        tree_toggle.toggled.connect(lambda shown: self.preferences.setValue('browser_tree', shown))
         splitter.addWidget(self.browser_panel)
 
     def _build_center(self, splitter):
@@ -352,9 +350,6 @@ class MainWindow(W.QMainWindow):
 
     def update_groups(self):
         return self.browser_panel.update_groups()
-
-    def select_group_node(self, item, column):
-        return self.browser_panel.select_group_node(item, column)
 
     def filter_browser(self, *args):
         return self.browser_panel.filter_browser(*args)

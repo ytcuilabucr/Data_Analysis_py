@@ -7,6 +7,7 @@ explicitly, like plot_actions.
 """
 from PySide6 import QtCore as C, QtWidgets as W, QtGui as G
 from .screen import fit_to_screen
+from .browser_panel import is_group
 
 LINE, MAP = 0, 1
 OPEN_TEXT, FRONT_TEXT = 'Open plot window', 'Bring plot window to front'
@@ -63,7 +64,7 @@ def build(self, view_menu, toolbar):
     toolbar.insertAction(toolbar.actions()[0], self.plot_action)
     self.plot_window.shown_changed.connect(self.plot_action.setChecked)
     self.plot_window.shown_changed.connect(lambda shown: shown and self.plot_stale and self.redraw())
-    self.browser.itemDoubleClicked.connect(lambda *args: open_plot(self))
+    self.browser.itemDoubleClicked.connect(lambda item, *args: is_group(item) or open_plot(self))
     self.open_plot_button.clicked.connect(lambda: open_plot(self))
     self.plot_window.shown_changed.connect(
         lambda shown: self.open_plot_button.setText(FRONT_TEXT if shown else OPEN_TEXT))

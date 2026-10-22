@@ -129,12 +129,7 @@ def import_file(self):
                 dataset.group_path = destination.selected_path()
                 dataset.group = path_label(dataset.group_path)
         # Reveal the newly imported file even if the browser was filtered.
-        self.search.clear()
-        for field in (self.tag_filter, self.metadata_filter):
-            field.clear()
-        self.favorites_filter.setChecked(False)
-        self.group_filter.setCurrentIndex(0)
-        self.kind_filter.setCurrentIndex(0)
+        self.browser_panel.reset_filters()
         for index, dataset in enumerate(imported):
             dataset.visible = index == 0
             self.add_dataset(dataset)
@@ -368,12 +363,7 @@ def open_project(self, path=None, *, confirm=True):
             self.stats_region = None
             self.stats_context = None
             self.stats_drag.setChecked(False)
-            self.search.clear()
-            for field in (self.tag_filter, self.metadata_filter):
-                field.clear()
-            self.favorites_filter.setChecked(False)
-            self.group_filter.setCurrentIndex(0)
-            self.kind_filter.setCurrentIndex(0)
+            self.browser_panel.reset_filters()
             with C.QSignalBlocker(self.browser):
                 self.browser.clear()
                 self.datasets = []

@@ -173,7 +173,7 @@ def test_browser_reopen_and_surviving_id_mapping(window, tmp_path, monkeypatch, 
     assert window.current().group == 'Group A'
     assert not window.current().visible
     assert not window.dirty
-    assert 'Group A' in window.browser.item(1).text()
+    assert 'Group A' in window.browser.item(1).parent().text(0)
     window.browser.item(1).setCheckState(C.Qt.CheckState.Checked)
     assert window.datasets[1].visible
 
@@ -216,9 +216,9 @@ def test_raw_derived_filter_survives_regrouping(app):
     copy = raw.derived()
     result = analyze(raw, [dict(operation='mean_subtract', parameters={})])
     datasets = [raw, copy, result]
-    assert filter_dataset_ids(datasets, None, '', False, '', '', '', '', kind='raw') == {copy.id, result.id}
-    assert filter_dataset_ids(datasets, None, '', False, '', '', '', '', kind='derived') == {raw.id}
-    assert filter_dataset_ids(datasets, None, '', False, '', '', '', '') == set()
+    assert filter_dataset_ids(datasets, None, '', kind='raw') == {copy.id, result.id}
+    assert filter_dataset_ids(datasets, None, '', kind='derived') == {raw.id}
+    assert filter_dataset_ids(datasets, None, '') == set()
     window = MainWindow()
     try:
         for d in datasets:
