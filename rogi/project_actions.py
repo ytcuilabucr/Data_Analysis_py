@@ -13,6 +13,7 @@ from .grouping import path_label
 from .navigation import export_figure
 from .operations import dialog_parent
 from . import plot_windows
+from .command_bar import CommandBar
 
 
 def _build_menus(self):
@@ -33,7 +34,8 @@ def _build_menus(self):
     self.show_plot_controls.setCheckable(True)
     self.show_statistics = self.show_fitting.parent().addAction("Show statistics")
     self.show_statistics.setCheckable(True)
-    toolbar = self.project_toolbar = self.addToolBar("Project")
+    # Placed above the file buttons by MainWindow; wraps instead of hiding commands.
+    toolbar = self.project_toolbar = CommandBar(self)
     self.project_actions = {}
     standard_keys = {"Open project…": G.QKeySequence.StandardKey.Open,
                      "Save": G.QKeySequence.StandardKey.Save,
@@ -58,7 +60,6 @@ def _build_menus(self):
         if label == "Export fit…":
             self.export_fit_action = action
             action.setVisible(False)
-    # Buttons that do not fit the window width fold into the toolbar's » overflow menu.
     _build_analysis_menu(self)
     # Shortcuts also work while the plot window is the active window.
     for action in [self.undo_action, self.redo_action, *self.project_actions.values()]:
@@ -129,7 +130,7 @@ def import_file(self):
                 dataset.group = path_label(dataset.group_path)
         # Reveal the newly imported file even if the browser was filtered.
         self.search.clear()
-        for field in (self.tag_filter, self.metadata_filter, self.date_from, self.date_to):
+        for field in (self.tag_filter, self.metadata_filter):
             field.clear()
         self.favorites_filter.setChecked(False)
         self.group_filter.setCurrentIndex(0)
@@ -368,7 +369,7 @@ def open_project(self, path=None, *, confirm=True):
             self.stats_context = None
             self.stats_drag.setChecked(False)
             self.search.clear()
-            for field in (self.tag_filter, self.metadata_filter, self.date_from, self.date_to):
+            for field in (self.tag_filter, self.metadata_filter):
                 field.clear()
             self.favorites_filter.setChecked(False)
             self.group_filter.setCurrentIndex(0)

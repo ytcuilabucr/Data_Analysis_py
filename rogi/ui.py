@@ -61,6 +61,7 @@ class MainWindow(W.QMainWindow):
         central_layout = W.QVBoxLayout(central)
         central_layout.setContentsMargins(0, 0, 0, 0)
         self.setCentralWidget(central)
+        central_layout.addWidget(self.project_toolbar)
         central_layout.addLayout(self._build_file_buttons())
         splitter = W.QSplitter()
         self._build_browser(splitter)

@@ -155,6 +155,13 @@ def test_all_project_commands_show_on_toolbar(window):
     toolbar_labels = [a.text() for a in w.project_toolbar.actions()]
     for label in w.project_actions:
         assert label in toolbar_labels
+    # The compact window wraps the bar onto rows rather than hiding commands.
+    w.resize(520, 700)
+    bar = w.project_toolbar
+    bar.resize(520, bar.height())
+    for action, button in bar.buttons.items():
+        if action.isVisible():
+            assert bar.rect().contains(button.geometry()), action.text()
     assert [a.text() for a in w.analysis_menu.actions()] == [
         'Analysis pipeline…', 'Apply pipeline preset…', 'Reopen analysis recipe…']
     assert w.analysis_menu.menuAction() in w.menuBar().actions()

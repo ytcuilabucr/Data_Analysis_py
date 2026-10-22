@@ -7,8 +7,8 @@
 Select a dataset and click **Analysis pipeline…** in the toolbar (or the
 **Analysis** menu). **Apply pipeline preset…** and **Reopen analysis recipe…**
 sit beside it on the toolbar and in the same menu; they are greyed out when they
-do not apply to the current selection. When the window is too narrow for every
-toolbar button, the rest fold into the toolbar's **»** overflow menu. Choose distinct X and Y input
+do not apply to the current selection. Every toolbar command is always shown; in
+a narrow window the toolbar wraps onto extra rows. Choose distinct X and Y input
 channels and check their units (units in trailing parentheses are suggested;
 blank means unknown, `1` means dimensionless). Add operations, select each step
 to configure its normalization method or smoothing window, and use **Move up** /
