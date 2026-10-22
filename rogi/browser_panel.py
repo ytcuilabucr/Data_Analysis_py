@@ -1,7 +1,8 @@
 """Dataset list, group navigation and filtering, independent of other panels."""
 from dataclasses import dataclass, field
+import re
 from PySide6 import QtCore as C, QtWidgets as W
-from .grouping import group_path, path_key, path_label, node_label, field_labels
+from .grouping import group_path, path_key, path_label, node_label, field_labels, grouping_fields
 from .metadata import metadata_search_text, acquisition_timestamp, channel_count
 
 
@@ -165,7 +166,7 @@ class BrowserPanel(W.QWidget):
         self.browser.setToolTip("Highlight rows to select them; check boxes to show them on the plot.")
         browser_layout = W.QVBoxLayout(self)
         self.search = W.QLineEdit()
-        self.search.setPlaceholderText("Search datasets / metadata…")
+        self.search.setPlaceholderText("Search datasets / metadata, or field = value…")
         self.search.setAccessibleName("Search datasets")
         self.group_filter = W.QComboBox()
         self.group_filter.setAccessibleName("Filter dataset group")
@@ -411,6 +412,24 @@ def cached_search_text(d):
     return entry[2]
 
 
+FIELD_QUERY = re.compile(r'(.+?)\s*=\s*(.+)')
+
+
+def field_query(datasets, query):
+    """A ``key = value`` search names a field when some dataset has a metadata
+    or title field containing key; it then matches that value exactly, so
+    ``power = 10`` excludes ``power = 100``. Returns a per-dataset predicate or None."""
+    match = FIELD_QUERY.fullmatch(query)
+    if not match:
+        return None
+    key, value = match[1].strip(), match[2].strip()
+    def matches(d):
+        return any(key in k.casefold() and v.strip().casefold() == value
+                   for k, v in grouping_fields(d).items())
+    named = any(key in k.casefold() for d in datasets for k in grouping_fields(d))
+    return matches if named else None
+
+
 def filter_dataset_ids(datasets, group, query, favorites, tag, metadata, lower, upper):
     """Compute visibility without Qt access; empty text filters need no indexing."""
     hidden = set()
@@ -418,6 +437,7 @@ def filter_dataset_ids(datasets, group, query, favorites, tag, metadata, lower, 
         current = {d.id for d in datasets}
         for stale in _search_text_cache.keys() - current:
             del _search_text_cache[stale]
+    exact = field_query(datasets, query) if query else None
     for d in datasets:
         matches = (group_path(d)[:len(group)] == group if isinstance(group, list)
                    else group is None or d.group == group)
@@ -425,7 +445,9 @@ def filter_dataset_ids(datasets, group, query, favorites, tag, metadata, lower, 
         timestamp = acquisition_timestamp(d)
         date = timestamp[:10] if timestamp else None
         if (not matches
-                or (query and query not in f"{d.name} {d.group} {d.source} {d.tags} {d.comments} {text}".casefold())
+                or (exact and not exact(d))
+                or (query and not exact
+                    and query not in f"{d.name} {d.group} {d.source} {d.tags} {d.comments} {text}".casefold())
                 or (favorites and not d.favorite)
                 or tag not in ' '.join(d.tags).casefold()
                 or metadata not in text

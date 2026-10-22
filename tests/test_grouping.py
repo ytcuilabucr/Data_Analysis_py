@@ -214,3 +214,21 @@ def test_partitions_group_by_title_power_numerically():
     assert key in varying_fields(ds)
     result = partitions(ds, [(key, False)])
     assert [path[-1]['value'] for _, path in result] == ['10', '10', '30', '100']
+
+
+def test_field_value_search_matches_title_values_exactly():
+    from rogi.browser_panel import filter_dataset_ids
+    ds = []
+    for name in ('YSL AOTF - 1.power = 10', 'YSL AOTF - 1.power = 30', 'YSL AOTF - 1.power = 100'):
+        d = scan('5 nm', '1 Hz')
+        d.name = name
+        ds.append(d)
+    def shown(query):
+        hidden = filter_dataset_ids(ds, None, query.casefold(), False, '', '', '', '')
+        return [d.name[-3:].strip(' =') for d in ds if d.id not in hidden]
+    assert shown('power = 10') == ['10']
+    assert shown('Power=30') == ['30']
+    assert shown('power = 1') == []
+    # Without a field of that name, the query is ordinary substring text.
+    assert shown('nothing = 10') == []
+    assert shown('power') == ['10', '30', '100']
