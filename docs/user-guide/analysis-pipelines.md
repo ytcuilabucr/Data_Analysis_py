@@ -4,7 +4,10 @@
 
 ## Non-destructive analysis pipelines
 
-Select a dataset and click **Analysis pipeline…**. Choose distinct X and Y input
+Select a dataset and click **Analysis pipeline…** in the toolbar (or the
+**Analysis** menu). Its dropdown arrow also holds **Apply pipeline preset…** and
+**Reopen analysis recipe…**; entries that do not apply to the current selection
+are greyed out. Choose distinct X and Y input
 channels and check their units (units in trailing parentheses are suggested;
 blank means unknown, `1` means dimensionless). Add operations, select each step
 to configure its normalization method or smoothing window, and use **Move up** /

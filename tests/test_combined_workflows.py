@@ -148,3 +148,22 @@ def test_image_profile_pipeline_edit_undo_and_reopen(window, tmp_path, monkeypat
     w.restore_view('Transposed scan')
     assert w.image_viewer.transpose.isChecked()
     assert w.image_viewer.cursor_positions[raw.id] == [2, 1]
+
+
+def test_pipeline_commands_share_one_toolbar_button(window):
+    w = window
+    toolbar_labels = [a.text() for a in w.project_toolbar.actions()]
+    for label in ('Analysis pipeline…', 'Apply pipeline preset…', 'Reopen analysis recipe…'):
+        assert label not in toolbar_labels
+    assert w.analysis_button.defaultAction() is w.project_actions['Analysis pipeline…']
+    assert [a.text() for a in w.analysis_menu.actions()] == [
+        'Analysis pipeline…', 'Apply pipeline preset…', 'Reopen analysis recipe…']
+    assert w.analysis_menu.menuAction() in w.menuBar().actions()
+    w.analysis_menu.aboutToShow.emit()
+    assert not w.project_actions['Apply pipeline preset…'].isEnabled()
+    assert not w.project_actions['Reopen analysis recipe…'].isEnabled()
+    w.add_dataset(Dataset('d', ['x', 'y'], np.array([[0., 1.], [1., 2.], [2., 3.]])))
+    w.pipeline_presets = {'p': {}}
+    w.analysis_menu.aboutToShow.emit()
+    assert w.project_actions['Apply pipeline preset…'].isEnabled()
+    assert not w.project_actions['Reopen analysis recipe…'].isEnabled()

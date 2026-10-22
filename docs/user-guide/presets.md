@@ -38,14 +38,15 @@ cancel result creation; use project **Save** to persist them. Unsaved editor
 changes remain temporary. Presets support the four single-signal operations;
 multi-dataset subtraction and ensemble statistics retain their existing dialog.
 
-Select a derived pipeline result and click **Reopen analysis recipe…** to restore
+Select a derived pipeline result and choose **Reopen analysis recipe…** from the
+**Analysis pipeline** button's dropdown arrow (or the **Analysis** menu) to restore
 its operation order, parameters, source channels, and unit labels. Preview uses
 the source dataset's current values; a message identifies changed revisions.
 The new result receives new provenance and an independent ID. The previous
 result remains unchanged. You can also save the reopened recipe as a preset.
 
-To reuse a preset across files, highlight datasets in the browser and click
-**Apply pipeline preset…**. Choose X/Y channels for each input in the table; the
+To reuse a preset across files, highlight datasets in the browser and choose
+**Apply pipeline preset…** from the same dropdown or **Analysis** menu. Choose X/Y channels for each input in the table; the
 channel labels show the units that will be recorded. **Preview all** computes
 independent outputs and lets you inspect each result using the result selector.
 No channel matching or unit conversion is inferred. If any input fails, no
