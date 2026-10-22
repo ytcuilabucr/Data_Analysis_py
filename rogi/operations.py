@@ -36,7 +36,7 @@ class OperationWorker(C.QThread):
 def coordinator(widget):
     """The window that owns project actions and the editing lock.
 
-    widget.window() is not enough: from inside a floating dock it is the dock.
+    widget.window() is not enough: from inside the plot window it is the plot window.
     """
     while widget is not None:
         if hasattr(widget, 'project_actions'):
@@ -46,7 +46,7 @@ def coordinator(widget):
 
 
 def dialog_parent(window):
-    """Open dialogs over the floating dock the user is working in, not the main window."""
+    """Open dialogs over the plot window when the user is working there, not the file window."""
     active = W.QApplication.activeWindow()
     return active if active is not None and coordinator(active) is window else window
 
@@ -55,10 +55,9 @@ def set_editing_enabled(window, enabled):
     """Shared by fits and other operations; preserve the fit editing boundary."""
     enabled = enabled and not getattr(window, 'operation_active', False)
     window.centralWidget().setEnabled(enabled)
-    # Docks float as their own windows; lock them explicitly rather than
-    # relying on where they sit in the widget tree.
-    for dock in getattr(window, 'docks', ()):
-        dock.widget().setEnabled(enabled)
+    # The plot window is a separate top-level window.
+    if getattr(window, 'plot_window', None) is not None:
+        window.plot_window.centralWidget().setEnabled(enabled)
     window.edit_menu.setEnabled(enabled)
     window.file_menu.setEnabled(enabled)
     # View actions can also mutate plot state during a worker operation.

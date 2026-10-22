@@ -2,18 +2,18 @@
 
 [User guide](index.md) · [Validation and limitations](../limitations.md)
 
-## Plot windows
+## Plot window
 
-The **Line plot** and the **2D map** are panels that can each move into their own window, for example the line plot on one monitor and the 2D map on another. The plot controls stay beside the line plot and move with it. Use **View → Separate windows**, or the float button on a panel's title bar:
+Rogi starts with the file window only: the dataset list and the data table. Plots open in a separate **plot window** holding the **Line plot** (with the plot controls beside it) and the **2D Map** tabs, for example on a second monitor.
 
-- Check **Line plot** or **2D map** to float that panel; uncheck it, or double-click the window's title bar, to dock it again. **Float or dock current plot** (Ctrl+Shift+D, ⌘⇧D on macOS) does this for the plot you last worked in.
-- Docked, the line plot and 2D map share the tabs above the data table, as before. When the 2D map is the docked plot, the table makes room for it unless **Show data table** is checked; with both plots floating, the table fills the middle column.
-- A floating plot window's title names the active dataset, and the panel when there are several.
-- Undo, Save, Import and the other main-window shortcuts keep working in floating windows, and floating windows are locked like the rest of the application during imports, saves and fits. Error messages, the color picker, progress and export dialogs open over the window you are working in.
-- Plot hints and the coordinate cursor readout appear in the line plot's own status line, below the plot.
+- Open or close it with **Plot window** on the toolbar, **View → Plot window**, or Ctrl+Shift+P (⌘⇧P on macOS). Double-clicking a dataset in the list also opens it. Closing the plot window only hides it; closing the file window ends Rogi.
+- Commands that act on the plot open it: **Show fitting**, **Show statistics**, **Show plot controls**, **Export plot…** and restoring a saved view. Opening a project does not.
+- While the plot window is closed, plots are not redrawn; selecting datasets is faster on large scans. The plot is drawn when the window opens.
+- The plot window is a normal window: it can go full screen, be minimized, and stays visible when another application is active. Its title names the view, the active dataset, and the panel when there are several.
+- Undo, Save, Open, Import and the other file-window shortcuts also work while the plot window is active, and on macOS the menu bar stays available. The plot window is locked like the file window during imports, saves and fits. Error messages, the color picker, progress and export dialogs open over the window you are working in.
+- Plot hints and the coordinate cursor readout appear in the plot window's status bar.
 - **Copy** on a plot's toolbar puts that plot on the clipboard as an image; **Export…** saves it as PNG or SVG.
-- The arrangement is remembered per computer, not in the project. A window saved on a monitor that is no longer connected reopens on one that is. **Reset window layout** docks everything again and forgets the saved arrangement.
-- On macOS floating panels are tool windows: they stay above the main window, have no full-screen or minimize button, and hide while another application is active unless **Keep separate windows visible in other apps** is checked.
+- Whether the plot window was open, and where, is remembered per computer, not in the project. On the very first start it stays closed. A window saved on a monitor that is no longer connected reopens on one that is.
 
 ## Plot controls
 

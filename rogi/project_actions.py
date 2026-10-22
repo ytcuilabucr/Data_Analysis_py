@@ -12,6 +12,7 @@ from .scanfile import consolidate_legacy
 from .grouping import path_label
 from .navigation import export_figure
 from .operations import dialog_parent
+from . import plot_windows
 
 
 def _build_menus(self):
@@ -32,7 +33,7 @@ def _build_menus(self):
     self.show_plot_controls.setCheckable(True)
     self.show_statistics = self.show_fitting.parent().addAction("Show statistics")
     self.show_statistics.setCheckable(True)
-    toolbar = self.addToolBar("Project")
+    toolbar = self.project_toolbar = self.addToolBar("Project")
     self.project_actions = {}
     standard_keys = {"Open project…": G.QKeySequence.StandardKey.Open,
                      "Save": G.QKeySequence.StandardKey.Save,
@@ -58,6 +59,9 @@ def _build_menus(self):
         if label == "Export fit…":
             self.export_fit_action = action
             action.setVisible(False)
+    # Shortcuts also work while the plot window is the active window.
+    for action in [self.undo_action, self.redo_action, *self.project_actions.values()]:
+        action.setShortcutContext(C.Qt.ShortcutContext.ApplicationShortcut)
     self.recent_menu = self.file_menu.addMenu("Recent projects")
     self.refresh_recent_projects()
 
@@ -226,7 +230,7 @@ def restore_view(self, name):
                               limits=settings.get(axis + 'lim'))
     self.restore_panels(settings)
     self.redraw()
-    self.plot_tabs.setCurrentIndex(snapshot['mode'])
+    plot_windows.ensure_plot(self, snapshot['mode'])
     self.image_viewer.restore_snapshot(snapshot['image'], self.datasets, active)
     self.navigation.update()
     self.changed()
@@ -397,6 +401,7 @@ def export_fit(self):
 
 
 def export_plot(self):
+    plot_windows.ensure_plot(self)
     figure = self.image_viewer.figure if self.plot_tabs.currentIndex() == 1 else self.figure
     export_figure(dialog_parent(self), figure)
 
@@ -406,7 +411,9 @@ def closeEvent(self, event):
         self.statusBar().showMessage("Wait for the current operation to finish before closing.")
         event.ignore()
     elif self.confirm_discard():
-        self.save_plot_layout()
+        self.save_plot_window()
+        # A child window outlives a hidden parent; without this the application keeps running.
+        self.plot_window.hide()
         event.accept()
     else:
         event.ignore()

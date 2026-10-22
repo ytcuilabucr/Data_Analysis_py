@@ -374,8 +374,6 @@ class ImageViewer(W.QWidget):
         navigation_row = W.QHBoxLayout()
         navigation_row.addWidget(self.navigation)
         navigation_row.addStretch()
-        self.show_table = W.QCheckBox('Show data table')
-        navigation_row.addWidget(self.show_table)
         layout.addLayout(navigation_row)
         self.canvas.setToolTip(self.note.text())
         layout.addWidget(self.canvas, 3)

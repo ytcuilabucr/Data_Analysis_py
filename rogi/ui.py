@@ -65,7 +65,6 @@ class MainWindow(W.QMainWindow):
                                             + self.analysis_panel.verticalScrollBar().sizeHint().width()
                                             + 2 * self.analysis_panel.frameWidth())
         self._build_connections()
-        self.restore_plot_layout()
 
     @property
     def datasets(self):
@@ -105,6 +104,7 @@ class MainWindow(W.QMainWindow):
         self.limit_callbacks = []
         self.stats_region = None
         self.stats_context = None
+        self.plot_stale = False
         self.setWindowTitle("Rogi — Scientific Analysis")
         fit_to_screen(self)
         self.history = G.QUndoStack(self)
@@ -132,13 +132,9 @@ class MainWindow(W.QMainWindow):
         splitter.addWidget(self.browser_panel)
 
     def _build_center(self, splitter):
-        # A nested main window holds the plot views as docks above
-        # the data table; floated, each becomes its own window (e.g. on another monitor).
-        center = W.QMainWindow()
-        center.setWindowFlags(C.Qt.WindowType.Widget)
-        center.setTabPosition(C.Qt.DockWidgetArea.TopDockWidgetArea, W.QTabWidget.TabPosition.North)
-        self.plot_host = center
-        splitter.addWidget(center)
+        # The plot window holds the line plot (with its controls) and the 2D map; the
+        # file window keeps the browser and the data table (see plot_windows).
+        self.plot_window = plot_windows.PlotWindow(self)
         plot_widget = W.QWidget()
         plot_layout = W.QVBoxLayout(plot_widget)
         self.figure = Figure(figsize=(8, 6), layout='constrained')
@@ -149,23 +145,19 @@ class MainWindow(W.QMainWindow):
         self.navigation = PlotNavigationToolbar(self.canvas, self)
         plot_layout.addWidget(self.navigation)
         plot_layout.addWidget(self.canvas)
-        # Plot hints and cursor coordinates stay with the plot when it floats.
-        self.plot_status = W.QStatusBar()
-        self.plot_status.setSizeGripEnabled(False)
-        plot_layout.addWidget(self.plot_status)
+        # Plot hints and cursor coordinates appear in the plot window, next to the plot.
+        self.plot_status = self.plot_window.statusBar()
         self.image_viewer = ImageViewer(self)
         self.image_viewer.profile_created.connect(self.add_dataset)
         self.image_viewer.preview_requested.connect(lambda name: self.guard(lambda: self.preview_image_preset(name)))
-        # Plot controls sit beside the line plot and float with it (see _build_analysis_container).
+        # Plot controls sit beside the line plot (see _build_analysis_container).
         self.line_view = W.QSplitter()
         self.line_view.addWidget(plot_widget)
-        top = C.Qt.DockWidgetArea.TopDockWidgetArea
-        self.plot_docks = [plot_windows.make_dock(center, 'Line plot', 'line_dock', self.line_view, top, top),
-                           plot_windows.make_dock(center, '2D map', 'map_dock', self.image_viewer, top, top)]
-        center.tabifyDockWidget(*self.plot_docks)
-        self.plot_docks[0].raise_()
-        self.plot_tabs = plot_windows.PlotViews(center, self.plot_docks, self)
+        self.plot_tabs = W.QTabWidget()
+        self.plot_tabs.addTab(self.line_view, 'Line plot')
+        self.plot_tabs.addTab(self.image_viewer, '2D Map')
         self.plot_tabs.currentChanged.connect(self.plot_tab_changed)
+        self.plot_window.setCentralWidget(self.plot_tabs)
         self.table = W.QTableView()
         self.table.setSelectionMode(W.QAbstractItemView.SelectionMode.ExtendedSelection)
         self.table.setSelectionBehavior(W.QAbstractItemView.SelectionBehavior.SelectItems)
@@ -180,12 +172,7 @@ class MainWindow(W.QMainWindow):
             self.table.addAction(action)
             self.edit_menu.addAction(action)
             action.setEnabled(False)
-        center.setCentralWidget(self.table)
-        self.image_viewer.show_table.toggled.connect(self.layout_changed)
-        for dock in self.plot_docks:
-            dock.topLevelChanged.connect(self.layout_changed)
-            dock.visibilityChanged.connect(self.layout_changed)
-        center.resizeDocks(self.plot_docks, [580, 580], C.Qt.Orientation.Vertical)
+        splitter.addWidget(self.table)
 
     def _build_analysis_container(self, splitter):
         panel = W.QWidget()
@@ -199,9 +186,8 @@ class MainWindow(W.QMainWindow):
         self.line_view.addWidget(panel_scroll)
         self.line_view.setCollapsible(0, False)
         self.line_view.setSizes([680, 380])
-        self.docks = self.plot_docks
-        plot_windows.build_menu(self, self.show_fitting.parent())
-        splitter.setSizes([420, 1060])
+        plot_windows.build(self, self.show_fitting.parent(), self.project_toolbar)
+        splitter.setSizes([420, 860])
         return layout
 
     def _build_channels(self, layout):
@@ -239,6 +225,7 @@ class MainWindow(W.QMainWindow):
 
     def _build_plot_controls(self, layout):
         self.show_plot_controls.toggled.connect(self.plot_panel.setVisible)
+        self.show_plot_controls.toggled.connect(lambda on: on and plot_windows.ensure_plot(self, plot_windows.LINE))
         self.plot_status.addPermanentWidget(self.coordinates)
         self.canvas.mpl_connect('motion_notify_event', self.cursor_motion)
         self.sync_axis_controls()
@@ -558,14 +545,14 @@ class MainWindow(W.QMainWindow):
     def plot_tab_changed(self, index):
         return plot_actions.plot_tab_changed(self, index)
 
-    def save_plot_layout(self):
-        return plot_windows.save_layout(self)
+    def open_plot(self, tab=None):
+        return plot_windows.open_plot(self, tab)
 
-    def restore_plot_layout(self):
-        return plot_windows.restore_layout(self)
+    def save_plot_window(self):
+        return plot_windows.save_state(self)
 
-    def layout_changed(self, *args):
-        return plot_windows.layout_changed(self)
+    def restore_plot_window(self):
+        return plot_windows.restore_state(self)
 
     def redraw(self):
         return plot_actions.redraw(self)
@@ -670,6 +657,7 @@ def main():
     window = MainWindow()
     window.show()
     fit_to_screen(window)  # actual frame margins are known once shown
+    window.restore_plot_window()
     C.QTimer.singleShot(0, window.suggest_recent_project)
     sys.exit(app.exec())
 

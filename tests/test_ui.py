@@ -305,6 +305,7 @@ def test_check_later_file_uncheck_first_then_change_channels():
             window.add_dataset(d)
         window.browser.setCurrentRow(0, C.QItemSelectionModel.SelectionFlag.ClearAndSelect)
         window.show()
+        window.open_plot()  # the plot is drawn only while its window is open
         app.processEvents()
         def click_checkbox(row):
             rect = window.browser.visualRect(window.browser.indexFromItem(window.browser.item(row), 0))

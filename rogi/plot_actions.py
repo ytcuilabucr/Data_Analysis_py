@@ -211,6 +211,8 @@ def labels_changed(self):
 
 
 def toggle_fitting(self, visible):
+    if visible:
+        plot_windows.ensure_plot(self, plot_windows.LINE)
     self.fit_panel.setVisible(visible)
     self.export_fit_action.setVisible(visible)
     if not visible:
@@ -235,6 +237,8 @@ def disable_navigation(self):
 
 
 def toggle_statistics(self, visible):
+    if visible:
+        plot_windows.ensure_plot(self, plot_windows.LINE)
     self.stats_panel.setVisible(visible)
     if not visible:
         self.stats_drag.setChecked(False)
@@ -400,13 +404,17 @@ def limits_changed(self, axis, axes):
 
 
 def plot_tab_changed(self, index):
-    self.layout_changed()
+    plot_windows.update_titles(self)
     self.image_viewer.set_context(self.datasets, self.current())
 
 
 def redraw(self):
     if getattr(self, 'redraw_deferred', False):
         return  # open_project redraws once after restoring the whole view.
+    if plot_windows.plot_hidden(self):
+        self.plot_stale = True  # drawn once the plot window opens
+        return
+    self.plot_stale = False
     self.image_viewer.set_context(self.datasets, self.current())
     self.drawing = True
     try:
