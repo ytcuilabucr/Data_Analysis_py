@@ -2,7 +2,8 @@
 
 - `rogi/core.py`: datasets, text imports, fits, and CSV exports without a GUI dependency.
 - `rogi/project.py` and `rogi/hdf5.py`: validation, format dispatch, JSON compatibility, and atomic HDF5 persistence.
-- `rogi/ui.py`: MainWindow composition and compatibility methods; the plot tabs sit in a floatable dock inside a nested main window above the data table.
+- `rogi/ui.py`: MainWindow composition and compatibility methods.
+- `rogi/plot_windows.py`: line plot, 2D map and plot controls as floatable docks in a nested main window around the data table; tab-like current-view tracking, layout persistence in QSettings.
 - `rogi/browser_panel.py`, `rogi/plot_controls_panel.py`, `rogi/fitting_panel.py`: dataset browser, channel/plot controls, fitting controls and FitWorker.
 - `rogi/dialogs.py`: import and metadata dialogs.
 - `rogi/project_actions.py`, `rogi/dataset_actions.py`, `rogi/table_actions.py`, `rogi/plot_actions.py`: window workflows.

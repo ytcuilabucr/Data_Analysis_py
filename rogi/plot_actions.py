@@ -10,8 +10,10 @@ from PySide6 import QtCore as C, QtWidgets as W
 from matplotlib.transforms import Bbox
 from matplotlib.widgets import SpanSelector, Cursor, RectangleSelector
 from .core import region_statistics
+from .operations import dialog_parent
 from .plotting import display_values
 from .history import ChangeCommand
+from . import plot_windows
 
 # Above this many plotted points, legend placement "best" falls back to a fixed corner.
 BEST_LEGEND_POINTS = 100_000
@@ -139,7 +141,7 @@ def plot_options(self):
                 dataset.visible = visible
         self.history.push(ChangeCommand(self, f"Show only {d.name} after channel change",
                                         show_only, restore_visibility))
-        self.statusBar().showMessage(f'Showing only {d.name}. Check other datasets to compare.', 5000)
+        self.plot_status.showMessage(f'Showing only {d.name}. Check other datasets to compare.', 5000)
     if x_changed:
         self.reset_fit_range(d)
     self.changed()
@@ -199,7 +201,7 @@ def toggle_statistics_drag(self, active):
         self.disable_navigation()
         d = self.current()
         if d and not d.visible:
-            self.statusBar().showMessage("Check the active dataset to see its curve while selecting.", 5000)
+            self.plot_status.showMessage("Check the active dataset to see its curve while selecting.", 5000)
     self.redraw()
 
 
@@ -276,7 +278,7 @@ def apply_axes(self):
 
 def choose_color(self):
     if self.current():
-        color = W.QColorDialog.getColor(parent=self, title="Dataset color")
+        color = W.QColorDialog.getColor(parent=dialog_parent(self), title="Dataset color")
         if color.isValid():
             self.set_color(color.name())
 
@@ -342,27 +344,8 @@ def limits_changed(self, axis, axes):
         self.changed()
 
 
-def update_table_visibility(self, *args):
-    # With the plot floated the table is all that is left in the middle column.
-    self.table.setVisible(self.plot_tabs.currentIndex() == 0 or self.image_viewer.show_table.isChecked()
-                          or self.plot_dock.isFloating())
-
-
-def save_plot_layout(self):
-    """Dock arrangement is per machine (monitors differ), so it lives in QSettings, not the project."""
-    self.preferences.setValue('plot_layout', self.plot_host.saveState())
-
-
-def restore_plot_layout(self):
-    # restoreState moves a floating plot saved on a disconnected monitor onto a present one.
-    state = self.preferences.value('plot_layout')
-    if state is not None:
-        self.plot_host.restoreState(state)
-
-
 def plot_tab_changed(self, index):
-    self.update_table_visibility()
-    self.analysis_panel.setVisible(index == 0)
+    self.layout_changed()
     self.image_viewer.set_context(self.datasets, self.current())
 
 
@@ -375,6 +358,7 @@ def redraw(self):
         self.draw_plot()
     finally:
         self.drawing = False
+    plot_windows.update_titles(self)
 
 
 def draw_plot(self):

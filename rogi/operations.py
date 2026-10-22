@@ -45,14 +45,20 @@ def coordinator(widget):
     return None
 
 
+def dialog_parent(window):
+    """Open dialogs over the floating dock the user is working in, not the main window."""
+    active = W.QApplication.activeWindow()
+    return active if active is not None and coordinator(active) is window else window
+
+
 def set_editing_enabled(window, enabled):
     """Shared by fits and other operations; preserve the fit editing boundary."""
     enabled = enabled and not getattr(window, 'operation_active', False)
     window.centralWidget().setEnabled(enabled)
-    # The plot dock floats as its own window; lock it explicitly rather than
-    # relying on where it sits in the widget tree.
-    if getattr(window, 'plot_dock', None) is not None:
-        window.plot_dock.widget().setEnabled(enabled)
+    # Docks float as their own windows; lock them explicitly rather than
+    # relying on where they sit in the widget tree.
+    for dock in getattr(window, 'docks', ()):
+        dock.widget().setEnabled(enabled)
     window.edit_menu.setEnabled(enabled)
     window.file_menu.setEnabled(enabled)
     # View actions can also mutate plot state during a worker operation.
@@ -118,7 +124,8 @@ def run_operation(parent, label, function, *, cancellable=False, cooperative=Fal
     worker.result.connect(results.append)
     worker.failed.connect(errors.append)
     worker.finished.connect(loop.quit)
-    dialog = W.QProgressDialog(label + '…', 'Cancel' if cancellable else '', 0, 0, root)
+    dialog = W.QProgressDialog(label + '…', 'Cancel' if cancellable else '', 0, 0,
+                               dialog_parent(root) if coordinated else root)
     dialog.setWindowModality(C.Qt.WindowModality.ApplicationModal)
     dialog.setMinimumDuration(150)
     dialog.setAutoClose(False)

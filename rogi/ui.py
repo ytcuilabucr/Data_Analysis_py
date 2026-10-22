@@ -27,7 +27,8 @@ from . import dataset_actions
 from .table_actions import DataTable
 from . import table_actions
 from . import plot_actions
-from .operations import run_operation, set_editing_enabled, Cancelled
+from . import plot_windows
+from .operations import run_operation, set_editing_enabled, Cancelled, dialog_parent
 from .history import ChangeCommand, CellCommand, CellsCommand
 from .grouping import group_path, path_key, path_label, node_label, partitions, varying_fields, field_labels, import_destinations
 from .spm import load_spm
@@ -127,10 +128,16 @@ class MainWindow(W.QMainWindow):
         splitter.addWidget(self.browser_panel)
 
     def _build_center(self, splitter):
-        # A nested main window keeps the plot dock above the table in the middle
-        # column; floated, the plot becomes its own window (e.g. on another monitor).
+        # A nested main window holds the plot views and controls as docks around
+        # the data table; floated, each becomes its own window (e.g. on another monitor).
         center = W.QMainWindow()
         center.setWindowFlags(C.Qt.WindowType.Widget)
+        center.setTabPosition(C.Qt.DockWidgetArea.TopDockWidgetArea, W.QTabWidget.TabPosition.North)
+        # Docked controls keep the full-height column beside the plot and table.
+        for corner in (C.Qt.Corner.TopRightCorner, C.Qt.Corner.BottomRightCorner):
+            center.setCorner(corner, C.Qt.DockWidgetArea.RightDockWidgetArea)
+        for corner in (C.Qt.Corner.TopLeftCorner, C.Qt.Corner.BottomLeftCorner):
+            center.setCorner(corner, C.Qt.DockWidgetArea.LeftDockWidgetArea)
         self.plot_host = center
         splitter.addWidget(center)
         plot_widget = W.QWidget()
@@ -143,24 +150,20 @@ class MainWindow(W.QMainWindow):
         self.navigation = PlotNavigationToolbar(self.canvas, self)
         plot_layout.addWidget(self.navigation)
         plot_layout.addWidget(self.canvas)
-        self.plot_tabs = W.QTabWidget()
-        self.plot_tabs.addTab(plot_widget, 'Line plot')
+        # Plot hints and cursor coordinates stay with the plot when it floats.
+        self.plot_status = W.QStatusBar()
+        self.plot_status.setSizeGripEnabled(False)
+        plot_layout.addWidget(self.plot_status)
         self.image_viewer = ImageViewer(self)
         self.image_viewer.profile_created.connect(self.add_dataset)
         self.image_viewer.preview_requested.connect(lambda name: self.guard(lambda: self.preview_image_preset(name)))
-        self.plot_tabs.addTab(self.image_viewer, '2D Map')
+        top = C.Qt.DockWidgetArea.TopDockWidgetArea
+        self.plot_docks = [plot_windows.make_dock(center, 'Line plot', 'line_dock', plot_widget, top, top),
+                           plot_windows.make_dock(center, '2D map', 'map_dock', self.image_viewer, top, top)]
+        center.tabifyDockWidget(*self.plot_docks)
+        self.plot_docks[0].raise_()
+        self.plot_tabs = plot_windows.PlotViews(center, self.plot_docks, self)
         self.plot_tabs.currentChanged.connect(self.plot_tab_changed)
-        self.plot_dock = W.QDockWidget("Plot", center)
-        self.plot_dock.setObjectName("plot_dock")
-        self.plot_dock.setFeatures(W.QDockWidget.DockWidgetFeature.DockWidgetMovable
-                                   | W.QDockWidget.DockWidgetFeature.DockWidgetFloatable)
-        self.plot_dock.setAllowedAreas(C.Qt.DockWidgetArea.TopDockWidgetArea)
-        self.plot_dock.setWidget(self.plot_tabs)
-        center.addDockWidget(C.Qt.DockWidgetArea.TopDockWidgetArea, self.plot_dock)
-        self.float_plot = self.show_fitting.parent().addAction("Plot in separate window")
-        self.float_plot.setCheckable(True)
-        self.float_plot.toggled.connect(self.plot_dock.setFloating)
-        self.plot_dock.topLevelChanged.connect(self.float_plot.setChecked)
         self.table = W.QTableView()
         self.table.setSelectionMode(W.QAbstractItemView.SelectionMode.ExtendedSelection)
         self.table.setSelectionBehavior(W.QAbstractItemView.SelectionBehavior.SelectItems)
@@ -176,9 +179,11 @@ class MainWindow(W.QMainWindow):
             self.edit_menu.addAction(action)
             action.setEnabled(False)
         center.setCentralWidget(self.table)
-        self.image_viewer.show_table.toggled.connect(self.update_table_visibility)
-        self.plot_dock.topLevelChanged.connect(self.update_table_visibility)
-        center.resizeDocks([self.plot_dock], [580], C.Qt.Orientation.Vertical)
+        self.image_viewer.show_table.toggled.connect(self.layout_changed)
+        for dock in self.plot_docks:
+            dock.topLevelChanged.connect(self.layout_changed)
+            dock.visibilityChanged.connect(self.layout_changed)
+        center.resizeDocks(self.plot_docks, [580, 580], C.Qt.Orientation.Vertical)
 
     def _build_analysis_container(self, splitter):
         panel = W.QWidget()
@@ -189,8 +194,13 @@ class MainWindow(W.QMainWindow):
         panel_scroll.setWidget(panel)
         panel_scroll.setMinimumWidth(300)
         panel_scroll.setMaximumWidth(400)
-        splitter.addWidget(panel_scroll)
-        splitter.setSizes([420, 680, 380])
+        sides = C.Qt.DockWidgetArea.LeftDockWidgetArea | C.Qt.DockWidgetArea.RightDockWidgetArea
+        self.controls_dock = plot_windows.make_dock(self.plot_host, 'Plot controls', 'controls_dock', panel_scroll,
+                                                    C.Qt.DockWidgetArea.RightDockWidgetArea, sides)
+        self.docks = self.plot_docks + [self.controls_dock]
+        plot_windows.build_menu(self, self.show_fitting.parent())
+        self.plot_host.resizeDocks([self.controls_dock], [380], C.Qt.Orientation.Horizontal)
+        splitter.setSizes([420, 1060])
         return layout
 
     def _build_channels(self, layout):
@@ -226,7 +236,7 @@ class MainWindow(W.QMainWindow):
 
     def _build_plot_controls(self, layout):
         self.show_plot_controls.toggled.connect(self.plot_panel.setVisible)
-        self.statusBar().addPermanentWidget(self.coordinates)
+        self.plot_status.addPermanentWidget(self.coordinates)
         self.canvas.mpl_connect('motion_notify_event', self.cursor_motion)
         self.sync_axis_controls()
 
@@ -299,7 +309,7 @@ class MainWindow(W.QMainWindow):
             return False
 
     def error(self, text):
-        W.QMessageBox.warning(self, "Rogi", text)
+        W.QMessageBox.warning(dialog_parent(self), "Rogi", text)
 
     def current(self):
         return self.browser_panel.current()
@@ -536,17 +546,17 @@ class MainWindow(W.QMainWindow):
     def limits_changed(self, axis, axes):
         return plot_actions.limits_changed(self, axis, axes)
 
-    def update_table_visibility(self, *args):
-        return plot_actions.update_table_visibility(self, *args)
-
     def plot_tab_changed(self, index):
         return plot_actions.plot_tab_changed(self, index)
 
     def save_plot_layout(self):
-        return plot_actions.save_plot_layout(self)
+        return plot_windows.save_layout(self)
 
     def restore_plot_layout(self):
-        return plot_actions.restore_plot_layout(self)
+        return plot_windows.restore_layout(self)
+
+    def layout_changed(self, *args):
+        return plot_windows.layout_changed(self)
 
     def redraw(self):
         return plot_actions.redraw(self)

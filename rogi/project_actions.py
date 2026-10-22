@@ -10,6 +10,8 @@ from .core import export_data as write_data, export_fit as write_fit
 from .project import load_project, convert_folder as convert_project_folder
 from .scanfile import consolidate_legacy
 from .grouping import path_label
+from .navigation import export_figure
+from .operations import dialog_parent
 
 
 def _build_menus(self):
@@ -395,14 +397,8 @@ def export_fit(self):
 
 
 def export_plot(self):
-    path, chosen = W.QFileDialog.getSaveFileName(self, "Export plot", "plot.png", "PNG (*.png);;SVG (*.svg)")
-    if path:
-        if not Path(path).suffix:
-            path += '.svg' if chosen.startswith('SVG') else '.png'
-        if Path(path).suffix.lower() not in ('.png', '.svg'):
-            raise ValueError("Choose a .png or .svg filename.")
-        figure = self.image_viewer.figure if self.plot_tabs.currentIndex() == 1 else self.figure
-        figure.savefig(path, dpi=180)
+    figure = self.image_viewer.figure if self.plot_tabs.currentIndex() == 1 else self.figure
+    export_figure(dialog_parent(self), figure)
 
 
 def closeEvent(self, event):
