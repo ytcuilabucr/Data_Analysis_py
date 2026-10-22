@@ -42,6 +42,10 @@ from .core import region_statistics
 from .project import save_project, load_project, convert_folder
 
 
+# The file window leaves room beside it for the plot window (capped to the screen).
+FILE_WINDOW_SIZE = (1150, 760)
+
+
 def project_preferences():
     return C.QSettings('Rogi', 'Rogi')
 
@@ -106,7 +110,7 @@ class MainWindow(W.QMainWindow):
         self.stats_context = None
         self.plot_stale = False
         self.setWindowTitle("Rogi — Scientific Analysis")
-        fit_to_screen(self)
+        fit_to_screen(self, *FILE_WINDOW_SIZE)
         self.history = G.QUndoStack(self)
 
     def _build_menus(self):
@@ -172,7 +176,13 @@ class MainWindow(W.QMainWindow):
             self.table.addAction(action)
             self.edit_menu.addAction(action)
             action.setEnabled(False)
-        splitter.addWidget(self.table)
+        files = W.QWidget()
+        files_layout = W.QVBoxLayout(files)
+        files_layout.setContentsMargins(0, 0, 0, 0)
+        self.open_plot_button = plot_windows.open_button()
+        files_layout.addWidget(self.open_plot_button)
+        files_layout.addWidget(self.table)
+        splitter.addWidget(files)
 
     def _build_analysis_container(self, splitter):
         panel = W.QWidget()
@@ -187,7 +197,7 @@ class MainWindow(W.QMainWindow):
         self.line_view.setCollapsible(0, False)
         self.line_view.setSizes([680, 380])
         plot_windows.build(self, self.show_fitting.parent(), self.project_toolbar)
-        splitter.setSizes([420, 860])
+        splitter.setSizes([420, 730])
         return layout
 
     def _build_channels(self, layout):
@@ -656,7 +666,7 @@ def main():
     app = W.QApplication.instance() or W.QApplication(sys.argv)
     window = MainWindow()
     window.show()
-    fit_to_screen(window)  # actual frame margins are known once shown
+    fit_to_screen(window, *FILE_WINDOW_SIZE)  # actual frame margins are known once shown
     window.restore_plot_window()
     C.QTimer.singleShot(0, window.suggest_recent_project)
     sys.exit(app.exec())

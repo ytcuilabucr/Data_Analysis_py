@@ -9,6 +9,15 @@ from PySide6 import QtCore as C, QtWidgets as W, QtGui as G
 from .screen import fit_to_screen
 
 LINE, MAP = 0, 1
+OPEN_TEXT, FRONT_TEXT = 'Open plot window', 'Bring plot window to front'
+# Fixed colors read the same in light and dark appearance; disabled while locked.
+OPEN_BUTTON_STYLE = """
+QPushButton#open_plot_button { background-color: #1f6feb; color: white; font-size: 17px; font-weight: 600;
+                               padding: 12px 20px; border: none; border-radius: 8px; }
+QPushButton#open_plot_button:hover { background-color: #3b82f6; }
+QPushButton#open_plot_button:pressed { background-color: #1858c4; }
+QPushButton#open_plot_button:disabled { background-color: #9aa4b2; }
+"""
 
 
 class PlotWindow(W.QMainWindow):
@@ -32,6 +41,17 @@ class PlotWindow(W.QMainWindow):
             self.shown_changed.emit(False)
 
 
+def open_button():
+    """The file window's prominent way into the plot window."""
+    button = W.QPushButton(OPEN_TEXT)
+    button.setObjectName('open_plot_button')
+    button.setStyleSheet(OPEN_BUTTON_STYLE)
+    button.setCursor(C.Qt.CursorShape.PointingHandCursor)
+    button.setMinimumHeight(48)
+    button.setToolTip('Line plot and 2D map open in their own window (Ctrl+Shift+P, ⌘⇧P on macOS)')
+    return button
+
+
 def build(self, view_menu, toolbar):
     fit_to_screen(self.plot_window, 1100, 800)
     self.plot_action = G.QAction("Plot window", self)
@@ -45,6 +65,9 @@ def build(self, view_menu, toolbar):
     self.plot_window.shown_changed.connect(self.plot_action.setChecked)
     self.plot_window.shown_changed.connect(lambda shown: shown and self.plot_stale and self.redraw())
     self.browser.itemDoubleClicked.connect(lambda *args: open_plot(self))
+    self.open_plot_button.clicked.connect(lambda: open_plot(self))
+    self.plot_window.shown_changed.connect(
+        lambda shown: self.open_plot_button.setText(FRONT_TEXT if shown else OPEN_TEXT))
 
 
 def plot_hidden(self):

@@ -190,3 +190,26 @@ def test_toolbar_copy_and_export(window, app, tmp_path, monkeypatch):
     monkeypatch.setattr(W.QFileDialog, 'getSaveFileName', lambda *args: (str(target), 'SVG (*.svg)'))
     window.image_viewer.navigation.export_plot()
     assert (tmp_path / 'map.svg').read_text().lstrip().startswith('<?xml')
+
+
+def test_file_window_leaves_room_for_the_plot(window):
+    from rogi.screen import available_area
+    from rogi.ui import FILE_WINDOW_SIZE
+    area = available_area(window)
+    assert window.width() <= min(FILE_WINDOW_SIZE[0], area.width())
+    assert window.height() <= min(FILE_WINDOW_SIZE[1], area.height())
+
+
+def test_prominent_button_opens_and_raises_the_plot(window, app):
+    button = window.open_plot_button
+    assert button.isVisible() and button.text() == 'Open plot window'
+    assert button.height() >= 48 and window.isAncestorOf(button)
+    button.click()
+    app.processEvents()
+    assert window.plot_window.isVisible() and button.text() == 'Bring plot window to front'
+    button.click()  # a second click keeps it open
+    app.processEvents()
+    assert window.plot_window.isVisible()
+    window.plot_window.close()
+    app.processEvents()
+    assert button.text() == 'Open plot window'
