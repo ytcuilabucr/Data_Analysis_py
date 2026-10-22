@@ -130,6 +130,8 @@ class MainWindow(W.QMainWindow):
     def _build_browser(self, splitter):
         self.browser_panel = BrowserPanel(self.browser_state)
         self.browser_panel.selection_requested.connect(self.select)
+        self.browser_panel.selection_requested.connect(self.update_analysis_actions)
+        self.history.indexChanged.connect(self.update_analysis_actions)
         self.browser_panel.action_requested.connect(
             lambda name, args: self.guard(lambda: getattr(self, name)(*args)))
         self.browser_panel.attributes_requested.connect(self.change_attributes)
@@ -409,6 +411,9 @@ class MainWindow(W.QMainWindow):
 
     def update_dirty(self, *args):
         return project_commands.update_dirty(self, *args)
+
+    def update_analysis_actions(self, *args):
+        return project_commands.update_analysis_actions(self, *args)
 
     def changed(self):
         return project_commands.changed(self)

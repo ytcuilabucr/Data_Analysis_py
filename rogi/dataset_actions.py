@@ -217,6 +217,7 @@ def add_analysis_batch(self, results):
 
 def pipeline_presets_changed(self):
     self.image_viewer.set_presets(self.pipeline_presets)
+    self.update_analysis_actions()
     self.changed()
 
 

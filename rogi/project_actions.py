@@ -47,11 +47,7 @@ def _build_menus(self):
                             ("2D spectrum map…", self.spectrum_map),
                             ("Export data…", self.export_data),
                             ("Export fit…", self.export_fit), ("Export plot…", self.export_plot)]:
-        if label in ANALYSIS_ACTIONS:
-            action = G.QAction(label, self)
-        else:
-            action = toolbar.addAction(label)
-        self.project_actions[label] = action
+        action = self.project_actions[label] = toolbar.addAction(label)
         if label in standard_keys:
             action.setShortcuts(G.QKeySequence.keyBindings(standard_keys[label]))
         elif label == "Import…":
@@ -62,7 +58,8 @@ def _build_menus(self):
         if label == "Export fit…":
             self.export_fit_action = action
             action.setVisible(False)
-    _build_analysis_button(self, toolbar)
+    # Buttons that do not fit the window width fold into the toolbar's » overflow menu.
+    _build_analysis_menu(self)
     # Shortcuts also work while the plot window is the active window.
     for action in [self.undo_action, self.redo_action, *self.project_actions.values()]:
         action.setShortcutContext(C.Qt.ShortcutContext.ApplicationShortcut)
@@ -73,8 +70,8 @@ def _build_menus(self):
 ANALYSIS_ACTIONS = ("Analysis pipeline…", "Apply pipeline preset…", "Reopen analysis recipe…")
 
 
-def _build_analysis_button(self, toolbar):
-    """Group the pipeline commands behind one split toolbar button and an Analysis menu."""
+def _build_analysis_menu(self):
+    """Mirror the pipeline toolbar buttons in an Analysis menu."""
     actions = [self.project_actions[label] for label in ANALYSIS_ACTIONS]
     actions[0].setToolTip("Create a pipeline for the selected dataset(s)")
     actions[1].setToolTip("Run a saved preset on every selected dataset")
@@ -84,15 +81,13 @@ def _build_analysis_button(self, toolbar):
     self.analysis_menu.addActions(actions)
     self.analysis_menu.aboutToShow.connect(lambda: update_analysis_actions(self))
     self.menuBar().insertMenu(self.show_fitting.parent().menuAction(), self.analysis_menu)
-    button = self.analysis_button = W.QToolButton(toolbar)
-    button.setDefaultAction(actions[0])
-    button.setMenu(self.analysis_menu)
-    button.setPopupMode(W.QToolButton.ToolButtonPopupMode.MenuButtonPopup)
-    toolbar.insertWidget(self.project_actions["2D spectrum map…"], button)
+    # No dataset or preset exists yet; later selection, history and preset changes re-enable these.
+    actions[1].setEnabled(False)
+    actions[2].setEnabled(False)
 
 
-def update_analysis_actions(self):
-    """Enable the dropdown-only pipeline commands when the selection supports them."""
+def update_analysis_actions(self, *args):
+    """Enable the pipeline commands when the selection supports them."""
     current = self.current()
     self.project_actions["Apply pipeline preset…"].setEnabled(
         bool(self.selected_datasets() and self.pipeline_presets))
@@ -418,6 +413,7 @@ def open_project(self, path=None, *, confirm=True):
         self.external_dirty = False
         self.history.setClean()
         self.update_dirty()
+        update_analysis_actions(self)
         self.canvas.draw_idle()
 
 
