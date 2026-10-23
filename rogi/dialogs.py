@@ -11,6 +11,7 @@ from .grouping import path_label, path_key, partitions, varying_fields, field_la
 from .operations import run_operation, Cancelled
 from .browser_panel import populate_group_tree
 from .screen import fit_to_screen
+from .units import column_unit, conversion_factor, display_unit, normalize_unit
 
 
 class ImportDialog(W.QDialog):
@@ -403,3 +404,65 @@ class MetadataDialog(W.QDialog):
         buttons = W.QDialogButtonBox(W.QDialogButtonBox.StandardButton.Close)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
+
+
+class UnitsDialog(W.QDialog):
+    """Relabel channel units in place, or convert values into an editable copy."""
+
+    def __init__(self, dataset, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle(f"Units — {dataset.name}")
+        fit_to_screen(self, 640, 480)
+        self.dataset = dataset
+        self.old = [column_unit(dataset, i) for i in range(len(dataset.columns))]
+        layout = W.QVBoxLayout(self)
+        info = W.QLabel("Blank means unknown; enter 1 for dimensionless. Plot labels, analysis "
+                        "compatibility and maps all use these units.")
+        info.setWordWrap(True)
+        layout.addWidget(info)
+        self.table = W.QTableWidget(len(dataset.columns), 3)
+        self.table.setHorizontalHeaderLabels(["Channel", "Current unit", "New unit"])
+        self.table.horizontalHeader().setSectionResizeMode(0, W.QHeaderView.ResizeMode.Stretch)
+        for row, (name, unit) in enumerate(zip(dataset.columns, self.old)):
+            for column, text in enumerate((name, unit, unit)):
+                item = W.QTableWidgetItem(text)
+                if column < 2:
+                    item.setFlags(item.flags() & ~C.Qt.ItemFlag.ItemIsEditable)
+                self.table.setItem(row, column, item)
+        layout.addWidget(self.table)
+        self.relabel = W.QRadioButton("Relabel only: values unchanged (fixes a missing or wrong unit)")
+        self.convert = W.QRadioButton("Convert values: SI prefix changes only, e.g. nA → pA "
+                                      "(creates an editable copy)")
+        self.relabel.setChecked(True)
+        for button in (self.relabel, self.convert):
+            button.toggled.connect(self.check)
+            layout.addWidget(button)
+        self.status = W.QLabel()
+        self.status.setWordWrap(True)
+        layout.addWidget(self.status)
+        self.buttons = W.QDialogButtonBox(W.QDialogButtonBox.StandardButton.Ok | W.QDialogButtonBox.StandardButton.Cancel)
+        self.buttons.accepted.connect(self.accept)
+        self.buttons.rejected.connect(self.reject)
+        layout.addWidget(self.buttons)
+        self.table.itemChanged.connect(self.check)
+        self.check()
+
+    def units(self):
+        return [normalize_unit(self.table.item(row, 2).text()) for row in range(self.table.rowCount())]
+
+    def check(self, *args):
+        units = self.units()
+        changed = [i for i, (a, b) in enumerate(zip(self.old, units)) if a != b]
+        problem = '' if changed else 'No unit changed.'
+        notes = []
+        if changed and self.convert.isChecked():
+            for i in changed:
+                try:
+                    notes.append(f"{self.dataset.columns[i]}: × {conversion_factor(self.old[i], units[i]):g}")
+                except ValueError as error:
+                    problem = str(error)
+        elif changed:
+            notes = [f"{self.dataset.columns[i]}: {display_unit(self.old[i]) or 'unknown'} → "
+                     f"{display_unit(units[i]) or 'unknown'}" for i in changed]
+        self.status.setText(problem or '; '.join(notes))
+        self.buttons.button(W.QDialogButtonBox.StandardButton.Ok).setEnabled(not problem)

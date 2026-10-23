@@ -13,15 +13,16 @@ def bundle_channels(channels, name=None):
         raise ValueError('Select at least one channel.')
     first = channels[0]
     count = max(len(d.values) for d in channels)
-    columns, arrays, layouts = [], [], []
+    columns, units, arrays, layouts = [], [], [], []
     coordinates = []
 
-    def append(label, values):
+    def append(label, values, unit):
         base, suffix = label, 2
         while label in columns:
             label = f'{base} [{suffix}]'
             suffix += 1
         columns.append(label)
+        units.append(unit)
         padded = np.full(count, np.nan)
         padded[:len(values)] = values
         arrays.append(padded)
@@ -34,9 +35,9 @@ def bundle_channels(channels, name=None):
         indices = next((indices for names, values, indices in coordinates
                         if names == d.columns[:3] and np.array_equal(values, coord, equal_nan=True)), None)
         if indices is None:
-            indices = [append(label, coord[:, i]) for i, label in enumerate(d.columns[:3])]
+            indices = [append(label, coord[:, i], d.column_units[i]) for i, label in enumerate(d.columns[:3])]
             coordinates.append((d.columns[:3], coord, indices))
-        signal = append(d.columns[3], d.values[:, 3])
+        signal = append(d.columns[3], d.values[:, 3], d.column_units[3])
         layouts.append(dict(signal_column=signal, coordinate_columns=indices,
                             coordinate_names=d.columns[:3], label=d.columns[3], rows=len(d.values),
                             image_channel_index=d.instrument_metadata.get('image_channel_index')))
@@ -44,7 +45,7 @@ def bundle_channels(channels, name=None):
     metadata.pop('image_channel_index', None)
     metadata['channels'] = layouts
     result = Dataset(name or (Path(first.source).stem if first.source else first.name.split(' — ')[0]),
-                     columns, np.column_stack(arrays), source=first.source, source_text=first.source_text,
+                     columns, np.column_stack(arrays), column_units=units, source=first.source, source_text=first.source_text,
                      group=first.group, group_path=deepcopy(first.group_path),
                      ycol=layouts[0]['signal_column'], instrument_metadata=metadata)
     result.instrument_metadata['source_dataset_id'] = result.id

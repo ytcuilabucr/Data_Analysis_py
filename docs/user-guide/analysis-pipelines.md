@@ -34,6 +34,23 @@ The initial operations use these explicit rules:
   missing values. Finite X coordinates must be strictly increasing or decreasing
   across the entire input, including across gaps. Duplicates and reversals are
   rejected. No sorting, resampling, or interpolation occurs.
+- **Photodiode voltage → power (mW):** convert a photoreceiver voltage to optical
+  power with P [mW] = 1000 × (V − V_dark) / (626 V/A × G × R(λ)). X must be
+  wavelength in `nm` and Y a voltage in `V`. Parameters are the detector curve,
+  the front-panel gain setting G (1×1 to 3×10⁴, default 1×1) and the dark voltage
+  V_dark (V, default 0). The 626 V/A factor converts a gain setting to the
+  receiver's transimpedance (2107/2117 manual Rev A: 626 V/A at 1×1 up to
+  18.8×10⁶ V/A at 3×10⁴). The manual's quick rule, response factor = R ÷ 1.5 in
+  V/mW, rounds this to 667 V/A and reads about 6% high. Measure into a
+  high-impedance input: the receiver's 16 Ω output into a 50 Ω input reads
+  about 24% low. The 2107 is balanced, so light on the left photodiode gives a
+  negative voltage, and outputs near ±7 V are saturated. The bundled
+  **Newport 2107 (Si)** curve was digitized from the datasheet plot (300–1050 nm,
+  50 nm points, about ±0.005 A/W) and describes a typical unit. R(λ) is linearly
+  interpolated; rows outside the curve become missing (no extrapolation). The
+  curve used is copied into the result's provenance under `calibrations`. To
+  convert many scans (for example all 30 datasets in `AOTF.h5`), save the step
+  as a preset and use **Apply pipeline preset…**.
 
 All operations preserve row count and X values. Rows missing X or Y have missing
 output; smoothing and differentiation never cross those gaps. Mean and

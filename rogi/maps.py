@@ -5,6 +5,7 @@ import json
 import re
 import numpy as np
 from .analysis import channel_unit
+from .units import axis_label, unit_hint
 from .metadata import metadata_fields
 
 
@@ -70,9 +71,9 @@ class SpectrumMap:
         else:
             with open(path, 'w', newline='') as stream:
                 writer = csv.writer(stream)
-                writer.writerow([f"{self.recipe['x']} [{self.units[0]}]",
-                                 f"{self.recipe['sweep']} [{self.units[2]}]",
-                                 f"{self.recipe['signal']} [{self.units[1]}]"])
+                writer.writerow([axis_label(self.recipe['x'], self.units[0]),
+                                 axis_label(self.recipe['sweep'], self.units[2]),
+                                 axis_label(self.recipe['signal'], self.units[1])])
                 writer.writerows((x, y, '' if np.isnan(z) else z)
                                  for y, row in zip(self.sweep, self.signal) for x, z in zip(self.x, row))
 
@@ -110,7 +111,8 @@ def assemble_map(datasets, recipe):
         order = np.argsort(x)
         grids.append((x[order], z[order]))
     if any(u != units[0] for u in units):
-        raise ValueError('Inconsistent X, signal, or sweep units. Convert units explicitly before assembling.')
+        raise ValueError('Inconsistent X, signal, or sweep units. Convert units explicitly before assembling. '
+                         + unit_hint([u[:2] for u in units]))
     if any(not u for u in units[0]):
         raise ValueError('Unknown units. Supply channel units and a sweep unit (1 for dimensionless).')
     if len({r['sweep'] for r in records}) != len(records):

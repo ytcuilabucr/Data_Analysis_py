@@ -1,11 +1,13 @@
 """Non-destructive raster presentation for imported SPM channel tables."""
 from .operations import run_in_background
-from .spatial import image_geometry
+from .spatial import image_geometry, coordinate_unit
 from functools import wraps
 from .scanfile import channel_views
 import textwrap
 from copy import deepcopy
 from .core import Dataset, export_data
+from .analysis import channel_unit
+from .units import column_label
 from pathlib import Path
 import numpy as np
 from PySide6 import QtCore as C, QtGui as G, QtWidgets as W
@@ -225,10 +227,11 @@ def extract_profile(dataset, axis, index, parent=None):
         axis=axis, position_axis='Y' if along_x else 'X', pixel_index=int(index),
         position=float(y[index] if along_x else x[index]),
         position_label=yl if along_x else xl, sampling='pixel centre')
+    unit = coordinate_unit(dataset)
     return Dataset(f'{dataset.name} — {axis} profile at pixel {index}',
                    [xl if along_x else yl, dataset.columns[3]],
                    np.column_stack((x if along_x else y, array[index, :] if along_x else array[:, index])),
-                   raw=False, parent=parent or dataset.id, source=dataset.source,
+                   column_units=['' if unit == 'pixel' else unit, channel_unit(dataset, 3)], raw=False, parent=parent or dataset.id, source=dataset.source,
                    group=dataset.group, group_path=deepcopy(dataset.group_path), instrument_metadata=metadata)
 
 
@@ -565,7 +568,7 @@ class ImageViewer(W.QWidget):
         return display_norm(lo, hi, gamma_value(self.gamma.value()))
 
     def colorbar_label(self, d):
-        label = 'Raw counts' if d.columns[3].endswith('(raw counts)') else textwrap.fill(d.columns[3], 20)
+        label = 'Raw counts' if channel_unit(d, 3) == 'raw counts' else textwrap.fill(column_label(d, 3), 20)
         gamma = gamma_value(self.gamma.value())
         return label if gamma == 1 else f'{label} (γ = {gamma:.2f})'
 
@@ -718,7 +721,7 @@ class ImageViewer(W.QWidget):
         return Dataset(d.name + ' — cursor rectangle',
             ['Region sample', xp.columns[0], yp.columns[0], d.columns[3]],
             np.column_stack((np.arange(len(values)), x.ravel(), y.ravel(), values)),
-            raw=False, parent=self.file_current.id, source=d.source, xcol=1, ycol=3,
+            column_units=['', xp.column_units[0], yp.column_units[0], xp.column_units[1]], raw=False, parent=self.file_current.id, source=d.source, xcol=1, ycol=3,
             group=d.group, group_path=deepcopy(d.group_path), instrument_metadata=metadata)
 
     def refresh_region(self, *args):
@@ -779,9 +782,9 @@ class ImageViewer(W.QWidget):
                                                markerfacecolor='none', markeredgewidth=2, color=color, zorder=5))
             below.plot(profiles[0].values[:, 0], profiles[0].values[:, 1], color=color)
             right.plot(profiles[1].values[:, 1], profiles[1].values[:, 0], color=color)
-        below.set_xlabel(profiles[0].columns[0])
-        below.set_ylabel(textwrap.fill(d.columns[3], 20), fontsize=8)
-        right.set_xlabel(textwrap.fill(d.columns[3], 20), fontsize=8)
+        below.set_xlabel(column_label(profiles[0], 0))
+        below.set_ylabel(textwrap.fill(column_label(d, 3), 20), fontsize=8)
+        right.set_xlabel(textwrap.fill(column_label(d, 3), 20), fontsize=8)
         below.relim(); below.autoscale_view(scalex=False, scaley=True)
         right.relim(); right.autoscale_view(scalex=True, scaley=False)
         self.export_profile_button.setEnabled(True)

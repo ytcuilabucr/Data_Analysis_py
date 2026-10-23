@@ -7,6 +7,7 @@ from .maps import assemble_map
 from .screen import fit_to_screen
 from .metadata import metadata_fields
 from .grouping import field_labels
+from .units import axis_label
 
 
 class MapDialog(W.QDialog):
@@ -158,15 +159,15 @@ class MapDialog(W.QDialog):
         self.figure.clear()
         ax, section = self.figure.subplots(1, 2)
         mesh = ax.pcolormesh(r.x, r.sweep, r.signal, shading='nearest')
-        self.figure.colorbar(mesh, ax=ax, label=f"{r.recipe['signal']} [{r.units[1]}]")
-        ax.set_xlabel(f"{r.recipe['x']} [{r.units[0]}]")
-        ax.set_ylabel(f"{r.recipe['sweep']} [{r.units[2]}]")
+        self.figure.colorbar(mesh, ax=ax, label=axis_label(r.recipe['signal'], r.units[1]))
+        ax.set_xlabel(axis_label(r.recipe['x'], r.units[0]))
+        ax.set_ylabel(axis_label(r.recipe['sweep'], r.units[2]))
         axis, index = self.section_axis.currentData(), max(0, self.section_value.currentIndex())
         x, z = r.section(axis, index)
         section.plot(x, z, '.-')
         section.set_title(self.section_value.currentText())
         section.set_xlabel(ax.get_xlabel() if axis == 'sweep' else ax.get_ylabel())
-        section.set_ylabel(f"{r.recipe['signal']} [{r.units[1]}]")
+        section.set_ylabel(axis_label(r.recipe['signal'], r.units[1]))
         if axis == 'sweep':
             ax.axhline(r.sweep[index], color='red')
         else:
@@ -204,8 +205,8 @@ class MapDialog(W.QDialog):
                 with open(path, 'w', newline='') as stream:
                     writer = csv.writer(stream)
                     writer.writerow([f'Fixed {axis}: {self.section_value.currentText()}'])
-                    writer.writerow([f"{r.recipe['x' if axis == 'sweep' else 'sweep']} [{r.units[0 if axis == 'sweep' else 2]}]",
-                                     f"{r.recipe['signal']} [{r.units[1]}]"])
+                    writer.writerow([axis_label(r.recipe['x' if axis == 'sweep' else 'sweep'], r.units[0 if axis == 'sweep' else 2]),
+                                     axis_label(r.recipe['signal'], r.units[1])])
                     writer.writerows(zip(x, z))
             self.write(save)
 

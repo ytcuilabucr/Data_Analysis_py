@@ -1,13 +1,14 @@
 """Versioned, non-destructive one-dimensional analysis recipes (no Qt)."""
 from copy import deepcopy
-import re
 import numpy as np
+from .units import column_unit, normalize_unit, unit_hint
 
 POLICIES = dict(
     missing='Rows with missing X or Y stay missing; local operations never cross gaps.',
     boundary='Smoothing clips centered windows at segment ends; differentiation uses one-sided endpoint slopes; singletons are missing.',
     spacing='Smoothing weights samples equally. Differentiation uses actual X spacing, requires strictly monotonic finite X, and never sorts or resamples.')
-OPERATIONS = ('mean_subtract', 'normalize', 'moving_average', 'differentiate')
+OPERATIONS = ('mean_subtract', 'normalize', 'moving_average', 'differentiate', 'photodiode_power')
+PHOTODIODE_DEFAULTS = dict(detector='newport_2107', gain_setting=1.0, dark_v=0.0)
 
 
 def validate_operations(operations):
@@ -26,6 +27,20 @@ def validate_operations(operations):
             window = params.get('window')
             if set(params) != {'window'} or type(window) is not int or window < 1 or window % 2 != 1:
                 raise ValueError('Moving-average window must be a positive odd integer.')
+        elif op == 'photodiode_power':
+            from .calibration import DETECTORS
+            gain, dark = params.get('gain_setting'), params.get('dark_v')
+            legacy = params.get('gain_v_per_a')  # older records stored the transimpedance itself
+            if legacy is not None:
+                gain_ok = set(params) == {'detector', 'gain_v_per_a', 'dark_v'} and type(legacy) in (int, float) \
+                    and np.isfinite(legacy) and legacy > 0
+            else:
+                gain_ok = set(params) == set(PHOTODIODE_DEFAULTS) and type(gain) in (int, float) \
+                    and gain in DETECTORS.get(params.get('detector'), {}).get('gain_settings', ())
+            if (not gain_ok or params['detector'] not in DETECTORS
+                    or type(dark) not in (int, float) or not np.isfinite(dark)):
+                raise ValueError('Photodiode power needs a known detector, one of its front-panel gain '
+                                 'settings and a finite dark voltage (V).')
         elif params:
             raise ValueError(f'{op} takes no parameters.')
 
@@ -54,15 +69,14 @@ def validate_analysis(record):
                 or not all(isinstance(u, str) for u in record['output_units'])
                 or record['policies'] != POLICIES):
             raise ValueError('Invalid analysis units or numerical policies.')
+        if 'calibrations' in record and not isinstance(record['calibrations'], dict):
+            raise ValueError('Invalid analysis calibrations.')
     except (KeyError, TypeError, AttributeError) as error:
         raise ValueError('Malformed analysis provenance.') from error
 
 
 def channel_unit(dataset, index):
-    if dataset.column_units:
-        return dataset.column_units[index]
-    match = re.search(r'\(([^()]+)\)\s*$', dataset.columns[index])
-    return match.group(1) if match else ''
+    return column_unit(dataset, index)
 
 
 def _segments(valid):
@@ -83,8 +97,8 @@ def analyze(dataset, operations, *, xcol=None, ycol=None, xunit=None, yunit=None
     if (type(xcol) is not int or type(ycol) is not int or xcol == ycol
             or not 0 <= xcol < len(dataset.columns) or not 0 <= ycol < len(dataset.columns)):
         raise ValueError('Choose distinct valid X and Y channels.')
-    xu = channel_unit(dataset, xcol) if xunit is None else xunit.strip()
-    yu = channel_unit(dataset, ycol) if yunit is None else yunit.strip()
+    xu = channel_unit(dataset, xcol) if xunit is None else normalize_unit(xunit)
+    yu = channel_unit(dataset, ycol) if yunit is None else normalize_unit(yunit)
     input_yunit = yu
     x = dataset.values[:, xcol].copy()
     y = dataset.values[:, ycol].copy()
@@ -106,6 +120,20 @@ def analyze(dataset, operations, *, xcol=None, ycol=None, xunit=None, yunit=None
                         raise ValueError('Cannot normalize a zero-scale signal.')
                     y[valid] = (v - offset) / scale
                     yu = '1'
+                elif op == 'photodiode_power':
+                    from .calibration import DETECTORS, photodiode_power_mw
+                    if xu != 'nm':
+                        raise ValueError('Photodiode power needs X as wavelength in nm.')
+                    if yu != 'V':
+                        raise ValueError('Photodiode power needs Y as a voltage in V.')
+                    if 'gain_v_per_a' in params:
+                        setting = params['gain_v_per_a'] / DETECTORS[params['detector']]['transimpedance_v_per_a_per_setting']
+                    else:
+                        setting = params['gain_setting']
+                    y = photodiode_power_mw(y, x, params['detector'], float(setting), float(params['dark_v']))
+                    if not np.isfinite(y).any():
+                        raise ValueError('No samples lie inside the detector calibration range.')
+                    yu = 'mW'
                 else:
                     result = np.full(y.shape, np.nan)
                     if op == 'differentiate':
@@ -133,6 +161,11 @@ def analyze(dataset, operations, *, xcol=None, ycol=None, xunit=None, yunit=None
                   input_channels=dict(x=dict(index=xcol, name=dataset.columns[xcol], unit=xu),
                                       y=dict(index=ycol, name=dataset.columns[ycol], unit=input_yunit)),
                   operations=deepcopy(operations), output_units=[xu, yu], policies=deepcopy(POLICIES))
+    detectors = {s['parameters']['detector'] for s in operations if s['operation'] == 'photodiode_power'}
+    if detectors:
+        from .calibration import detector_curve
+        # The curve itself is provenance: results stay reproducible if the bundled curve changes.
+        record['calibrations'] = {d: detector_curve(d) for d in sorted(detectors)}
     output_name = 'Result' + (f' ({yu})' if yu else '')
     if output_name == dataset.columns[xcol]:
         output_name += ' [analysis]'
@@ -213,7 +246,8 @@ def analyze_many(datasets, operation='mean', *, reference=None, pairs=None,
                                             for axis, i in [('x', d.xcol), ('y', d.ycol)]}))
     signature = lambda s: [(s['input_channels'][a]['name'], s['input_channels'][a]['unit']) for a in ('x', 'y')]
     if any(signature(s) != signature(sources[0]) for s in sources[1:]):
-        raise ValueError('Compatible X/Y channel names and units are required (no automatic unit conversion).')
+        raise ValueError('Compatible X/Y channel names and units are required (no automatic unit conversion). '
+                         + unit_hint([[u for _, u in signature(s)] for s in sources]))
     x = lookup[grid].values[:, lookup[grid].xcol].copy()
     if not np.isfinite(x).all():
         raise ValueError('X coordinates must be finite.')

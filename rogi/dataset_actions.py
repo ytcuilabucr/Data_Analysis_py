@@ -65,6 +65,23 @@ def rename_dataset(self):
         self.change_attributes([d], 'name', name, f'Rename {d.name} to {name}')
 
 
+def edit_units(self):
+    from .dialogs import UnitsDialog
+    from .units import converted_copy
+    selected = self.selected_datasets()
+    if len(selected) != 1:
+        raise ValueError("Select one dataset to edit its units.")
+    d = selected[0]
+    dialog = UnitsDialog(d, self)
+    if dialog.exec() != W.QDialog.DialogCode.Accepted:
+        return
+    if dialog.convert.isChecked():
+        self.add_dataset(converted_copy(d, dialog.units()))
+    else:
+        # Units describe the values; relabeling raw data leaves the values read-only and unchanged.
+        self.change_attributes([d], 'column_units', dialog.units(), f'Edit units of {d.name}')
+
+
 def assign_group(self):
     if not self.selected_datasets():
         return
@@ -270,6 +287,19 @@ def preview_image_preset(self, name):
 def apply_pipeline_preset(self):
     from .analysis_ui import BatchPipelineDialog
     selected = self.selected_datasets()
+    ticked = self.browser_panel.ticked_datasets()
+    # Ticking only plots; offer the ticked set when it looks like the intended input.
+    if len(selected) <= 1 and len(ticked) > 1:
+        answer = W.QMessageBox.question(
+            self, "Apply pipeline preset",
+            f"{len(ticked)} datasets are ticked for plotting, but only {len(selected)} highlighted.\n\n"
+            "Apply the preset to the ticked datasets instead? Choose No to use only the highlighted one.",
+            W.QMessageBox.StandardButton.Yes | W.QMessageBox.StandardButton.No | W.QMessageBox.StandardButton.Cancel,
+            W.QMessageBox.StandardButton.Yes)
+        if answer == W.QMessageBox.StandardButton.Cancel:
+            return
+        if answer == W.QMessageBox.StandardButton.Yes:
+            selected = ticked
     if not selected:
         raise ValueError('Select datasets in the browser first.')
     dialog = BatchPipelineDialog(selected, self.pipeline_presets, self)

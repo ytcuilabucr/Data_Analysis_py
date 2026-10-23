@@ -4,12 +4,47 @@ Only the callable runs in the worker. Results, editing locks and dialogs belong
 to the GUI thread. A local event loop preserves callers' return/error semantics;
 input is locked while it runs. Cancellation is cooperative, never terminate().
 """
+import gc
 from threading import Event
 from PySide6 import QtCore as C, QtWidgets as W
 
 
 class Cancelled(ValueError):
     pass
+
+
+class MainThreadCollector(C.QObject):
+    """Run Python's cyclic garbage collector only on the GUI thread.
+
+    Automatic collection starts in whichever thread happens to allocate, including
+    worker threads. Collecting a cycle that holds Qt wrappers there makes shiboken
+    defer the C++ delete to the GUI thread, which segfaults if Qt has already
+    destroyed the object (macOS: "Python quit unexpectedly", crash report frame
+    mainThreadDeletionHandler). Thresholds keep the normal collection cadence.
+    """
+
+    def __init__(self, parent=None, interval_ms=500):
+        super().__init__(parent)
+        self.threshold = gc.get_threshold()
+        gc.disable()
+        self.timer = C.QTimer(self)
+        self.timer.timeout.connect(self.check)
+        self.timer.start(interval_ms)
+
+    def check(self):
+        counts = gc.get_count()
+        generation = -1
+        for level, (count, threshold) in enumerate(zip(counts, self.threshold)):
+            if threshold and count > threshold:
+                generation = level
+        if generation >= 0:
+            gc.collect(generation)
+
+
+def collect_on_main_thread(app):
+    """Install once per QApplication; returns the existing collector if present."""
+    existing = app.findChild(MainThreadCollector)
+    return existing if existing is not None else MainThreadCollector(app)
 
 
 class OperationWorker(C.QThread):
@@ -71,6 +106,8 @@ def set_editing_enabled(window, enabled):
     window.findChild(W.QToolBar).setEnabled(enabled)
     if enabled:
         window.update_clipboard_actions()
+        # The loop above enabled every project command; restore selection-dependent ones.
+        window.update_analysis_actions()
 
 
 def run_in_background(function):

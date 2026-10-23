@@ -55,7 +55,7 @@ from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
 from .navigation import PlotNavigationToolbar
 from .images import raster, contrast_limits, display_norm
 from .presets import display_limits
-from .spatial import image_geometry
+from .spatial import image_geometry, coordinate_unit
 from .screen import fit_to_screen
 
 
@@ -68,6 +68,7 @@ class ImagePreviewDialog(W.QDialog):
         self.operations = deepcopy(preset['operations'])
         self.display = deepcopy(preset.get('display'))
         self.geometry = image_geometry(source, self.input.shape)
+        self.coordinate_unit = coordinate_unit(source)
         self.input_unit = channel_unit(source, 3)
         self.palette, self.transposed = palette, transpose
         self.result = None
@@ -126,12 +127,10 @@ class ImagePreviewDialog(W.QDialog):
         along_x = self.axis.currentIndex() == 0
         span = extent[1]-extent[0] if along_x else extent[3]-extent[2]
         count = self.input.shape[1 if along_x else 0]
-        label = xlabel if along_x else ylabel
-        coordinate_unit = label.split('(', 1)[1].rstrip(')') if '(' in label else 'pixel'
         try:
             self.result, self.output_unit = process_image(self.input, self.operations,
                 axis='X' if along_x else 'Y', spacing=span/count,
-                coordinate_unit=coordinate_unit, signal_unit=self.input_unit)
+                coordinate_unit=self.coordinate_unit, signal_unit=self.input_unit)
         except ValueError as error:
             self.status.setText(str(error))
             self.canvas.draw_idle()

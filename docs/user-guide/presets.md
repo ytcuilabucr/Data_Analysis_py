@@ -35,18 +35,22 @@ saved preset to a standalone JSON file; **Import…** adds presets from such a f
 so they can be used in another project. Imported name collisions receive numbered
 suffixes. Explicitly saved/imported presets stay in the workspace even if you
 cancel result creation; use project **Save** to persist them. Unsaved editor
-changes remain temporary. Presets support the four single-signal operations;
+changes remain temporary. Presets support the five single-signal operations;
 multi-dataset subtraction and ensemble statistics retain their existing dialog.
 
-Select a derived pipeline result and choose **Reopen analysis recipe…** from the
-**Analysis pipeline** button's dropdown arrow (or the **Analysis** menu) to restore
-its operation order, parameters, source channels, and unit labels. Preview uses
+Select a derived pipeline result and click **Reopen analysis recipe…** on the
+toolbar (or choose it from the **Analysis** menu) to restore its operation order,
+parameters, source channels, and unit labels. The command is greyed out unless
+the selected dataset is a result of the single-dataset pipeline; raw datasets,
+editable copies, and multi-dataset results cannot be reopened. Preview uses
 the source dataset's current values; a message identifies changed revisions.
 The new result receives new provenance and an independent ID. The previous
 result remains unchanged. You can also save the reopened recipe as a preset.
 
-To reuse a preset across files, highlight datasets in the browser and choose
-**Apply pipeline preset…** from the same dropdown or **Analysis** menu. Choose X/Y channels for each input in the table; the
+To reuse a preset across files, highlight datasets in the browser and click
+**Apply pipeline preset…** on the toolbar (or choose it from the **Analysis**
+menu). The command is greyed out until the project has at least one saved or
+imported preset and at least one dataset is selected. Ticking a dataset's **Plot** checkbox does not select it. If several datasets are ticked but only one row is highlighted, Rogi asks whether to use the ticked datasets instead; **Select ticked** in the **Organize** menu highlights them directly. Choose X/Y channels for each input in the table; the
 channel labels show the units that will be recorded. **Preview all** computes
 independent outputs and lets you inspect each result using the result selector.
 No channel matching or unit conversion is inferred. If any input fails, no

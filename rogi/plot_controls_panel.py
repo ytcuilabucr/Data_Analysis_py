@@ -14,6 +14,7 @@ class PlotControlsPanel(C.QObject):
     choose_color_requested = C.Signal()
     set_color_requested = C.Signal(str)
     appearance_changed_requested = C.Signal()
+    legend_changed_requested = C.Signal()
     presentation_changed_requested = C.Signal()
     add_curve_requested = C.Signal(str)
     remove_curve_requested = C.Signal(str)
@@ -132,7 +133,8 @@ class PlotControlsPanel(C.QObject):
         self.xlabel = W.QLineEdit()
         self.ylabel = W.QLineEdit()
         for entry in (self.xlabel, self.ylabel):
-            entry.setToolTip('Optional custom label. Clear to follow the visible channel names.')
+            entry.setToolTip('Optional custom label; the axis unit is added unless the text ends in ) or ]. '
+                            'Clear to follow the visible channel names and units.')
         for label, widget in [("Style", self.style),
                               ("Plot title", self.title), ("X label", self.xlabel), ("Y label", self.ylabel)]:
             form.addRow(label, widget)
@@ -181,7 +183,7 @@ class PlotControlsPanel(C.QObject):
         controls.addRow("Dataset marker", self.marker)
         self.legend_position = W.QComboBox()
         self.legend_position.addItems(LEGENDS)
-        self.legend_position.currentTextChanged.connect(lambda *_: self.presentation_changed_requested.emit())
+        self.legend_position.currentTextChanged.connect(lambda *_: self.legend_changed_requested.emit())
         controls.addRow("Legend", self.legend_position)
         self.cursor_enabled = W.QCheckBox("Coordinate cursor")
         self.cursor_enabled.toggled.connect(lambda *_: self.presentation_changed_requested.emit())

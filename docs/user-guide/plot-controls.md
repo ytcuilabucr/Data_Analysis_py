@@ -27,7 +27,19 @@ Enable **View → Show plot controls** for advanced presentation options; the de
 - Choose a legend position or **hidden**. **Coordinate cursor** displays crosshairs and X/Y coordinates in the line plot's status line, including actual data coordinates on logarithmic axes. It does not snap to samples; residual-panel coordinates are labeled Residual.
 - Log axes cannot display zero or negative coordinates. Rogi masks affected display rows, leaving line gaps, and reports counts for data and fit points. Missing values also remain gaps. Stored arrays, source text, fits, exports, and fitting calculations are unchanged. Empty logarithmic views use a positive fallback range. Residual Y is always linear.
 
-JSON and HDF5 projects retain scales, automatic/manual modes, limits (including residual Y zoom), colors, markers, legend position, cursor toggle, and fitting visibility. View changes trigger unsaved-change prompts; moving the cursor does not. Older projects default to linear scales and automatic styles; saved legacy limits restore as manual views. Pending axis entries are not saved until applied. Opening the controls panel itself is temporary.
+## Right-click menus on the plot
+
+Right-click a part of the line plot to change it in place. On macOS, Control-click works too. Menus do not open while the toolbar's zoom or pan tool is active, because those tools use the right button.
+
+- **Title**: **Edit plot title…**, **Clear title**, and **Title size**.
+- **X or Y axis label**: **Edit … label…**, **Use automatic … label**, **Axis label size**, and **Tick label size**. Editing a Y label changes only the panel you clicked; the X label is shared by all panels.
+- **Legend**: **Position**, **Reset dragged position**, **Font size**, **Columns**, **Frame**, and **Hide legend**. Right-clicking an entry also offers **Legend label for …**, which renames the curve in the legend only; the dataset keeps its name. Empty text or **Reset legend label** goes back to the dataset name.
+- **Curve**: legend label, **Color…**, **Automatic color**, **Marker**, and **Remove from plot**, for the curve you clicked, which need not be the highlighted dataset.
+- **Empty plot area**: the title and label editors, all font sizes, and the legend submenu, or **Show legend** when it is hidden.
+
+**Drag the legend** with the left mouse button to move it anywhere in its panel. The position is kept for that panel. Choosing a position (from the menu or the **Legend** control) or **Reset dragged position** puts it back at a fixed location. The legend cannot be dragged while zoom, pan, drag-to-fit, or statistics drag selection is active.
+
+JSON and HDF5 projects retain scales, automatic/manual modes, limits (including residual Y zoom), colors, markers, legend position (including dragged positions), legend font size, columns, frame and custom entry labels, title, axis-label and tick font sizes, cursor toggle, and fitting visibility. View changes trigger unsaved-change prompts; moving the cursor does not. Older projects default to linear scales and automatic styles; saved legacy limits restore as manual views. Pending axis entries are not saved until applied. Opening the controls panel itself is temporary.
 
 ## Named saved views
 

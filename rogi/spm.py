@@ -107,7 +107,8 @@ def parse_spm(data, name='Imported SPM', source=''):
             columns = ['Sample', 'X pixel', 'Y pixel', f'{label} (raw counts)']
         dataset = Dataset(f'{name} — {index}: {label}',
                           columns,
-                          values, source=source, source_text=header, ycol=3)
+                          values, source=source, source_text=header, ycol=3,
+                          column_units=['', '', '', 'raw counts'])
         dataset.instrument_metadata = dict(format='nanoscope', version=1,
             source_dataset_id=dataset.id, sections=deepcopy(sections), unparsed=deepcopy(unparsed))
         if not is_force:

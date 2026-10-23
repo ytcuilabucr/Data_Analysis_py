@@ -6,10 +6,13 @@ from PySide6 import QtWidgets as W, QtCore as C
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
 from .screen import fit_to_screen
-from .analysis import analyze, channel_unit, POLICIES
+from .analysis import analyze, channel_unit, POLICIES, PHOTODIODE_DEFAULTS
+from .units import axis_label, column_label, normalize_unit
+from .calibration import DETECTORS
 
 LABELS = {'mean_subtract': 'Subtract mean', 'normalize': 'Normalize',
-          'moving_average': 'Moving average', 'differentiate': 'Differentiate'}
+          'moving_average': 'Moving average', 'differentiate': 'Differentiate',
+          'photodiode_power': 'Photodiode voltage → power (mW)'}
 
 
 class AnalysisDialog(W.QDialog):
@@ -73,6 +76,21 @@ class AnalysisDialog(W.QDialog):
         self.window.setValue(3)
         params.addRow('Normalization method (selected step)', self.method)
         params.addRow('Centered window, odd sample count (selected step)', self.window)
+        self.detector = W.QComboBox()
+        for key, curve in DETECTORS.items():
+            self.detector.addItem(curve['label'], key)
+        self.gain = W.QComboBox()
+        self.fill_gains()
+        self.dark = W.QDoubleSpinBox()
+        self.dark.setRange(-100, 100)
+        self.dark.setDecimals(6)
+        self.dark.setSuffix(' V')
+        self.dark.setSingleStep(1e-3)
+        self.gain.setToolTip('Front-panel gain setting used. P = (V - V_dark) / (626 V/A · setting · R(λ)); '
+                             'measure into a high-impedance input.')
+        params.addRow('Detector responsivity curve (selected step)', self.detector)
+        params.addRow('Gain setting (selected step)', self.gain)
+        params.addRow('Dark voltage (selected step)', self.dark)
         layout.addLayout(params)
         # Display settings only affect 2D map previews; they never change computed values.
         self.display_box = W.QGroupBox('Save image display settings with the preset (2D map previews)')
@@ -100,6 +118,9 @@ class AnalysisDialog(W.QDialog):
         self.steps.currentRowChanged.connect(self.select_step)
         self.method.currentIndexChanged.connect(self.update_step)
         self.window.valueChanged.connect(self.update_step)
+        self.detector.currentIndexChanged.connect(self.update_step)
+        self.gain.currentIndexChanged.connect(self.update_step)
+        self.dark.valueChanged.connect(self.update_step)
         rules = W.QLabel('\n'.join(POLICIES.values()) + '\nMean and normalization use finite X/Y pairs. Zero-scale normalization is rejected. Unknown units remain unknown; normalization is dimensionless.')
         rules.setWordWrap(True)
         layout.addWidget(rules)
@@ -232,7 +253,8 @@ class AnalysisDialog(W.QDialog):
 
     def add_step(self):
         op = self.operation.currentData()
-        params = {'method': 'max_abs'} if op == 'normalize' else {'window': 3} if op == 'moving_average' else {}
+        params = ({'method': 'max_abs'} if op == 'normalize' else {'window': 3} if op == 'moving_average'
+                  else dict(PHOTODIODE_DEFAULTS) if op == 'photodiode_power' else {})
         item = W.QListWidgetItem()
         self.set_step(item, dict(operation=op, parameters=params))
         self.steps.addItem(item)
@@ -255,11 +277,30 @@ class AnalysisDialog(W.QDialog):
         step = item.data(C.Qt.ItemDataRole.UserRole) if item else None
         self.method.setEnabled(bool(step and step['operation'] == 'normalize'))
         self.window.setEnabled(bool(step and step['operation'] == 'moving_average'))
-        with C.QSignalBlocker(self.method), C.QSignalBlocker(self.window):
+        photodiode = bool(step and step['operation'] == 'photodiode_power')
+        for widget in (self.detector, self.gain, self.dark):
+            widget.setEnabled(photodiode)
+        with (C.QSignalBlocker(self.method), C.QSignalBlocker(self.window), C.QSignalBlocker(self.detector),
+              C.QSignalBlocker(self.gain), C.QSignalBlocker(self.dark)):
+            if photodiode:
+                self.detector.setCurrentIndex(self.detector.findData(step['parameters']['detector']))
+                self.fill_gains()
+                self.gain.setCurrentIndex(self.gain.findData(float(step['parameters'].get('gain_setting', -1))))
+                self.dark.setValue(step['parameters']['dark_v'])
             if self.method.isEnabled():
                 self.method.setCurrentIndex(self.method.findData(step['parameters']['method']))
             if self.window.isEnabled():
                 self.window.setValue(step['parameters']['window'])
+
+    def fill_gains(self):
+        # Gain settings belong to the receiver model, so the list follows the detector.
+        current = self.gain.currentData()
+        with C.QSignalBlocker(self.gain):
+            self.gain.clear()
+            for setting in DETECTORS[self.detector.currentData()]['gain_settings']:
+                digits = str(int(setting))  # front-panel style: 3×10², not 300
+                self.gain.addItem(f"{digits[0]}×{('1', '10', '10²', '10³', '10⁴')[len(digits) - 1]}", setting)
+            self.gain.setCurrentIndex(max(0, self.gain.findData(current)))
 
     def update_step(self, *_):
         item = self.steps.currentItem()
@@ -269,6 +310,10 @@ class AnalysisDialog(W.QDialog):
                 step['parameters'] = {'method': self.method.currentData()}
             elif step['operation'] == 'moving_average':
                 step['parameters'] = {'window': self.window.value()}
+            elif step['operation'] == 'photodiode_power':
+                self.fill_gains()
+                step['parameters'] = dict(detector=self.detector.currentData(),
+                                          gain_setting=self.gain.currentData() or 1.0, dark_v=self.dark.value())
             self.set_step(item, step)
 
     def preview(self):
@@ -289,8 +334,9 @@ class AnalysisDialog(W.QDialog):
             ax = self.figure.add_subplot(1, 2, position)
             ax.plot(result.values[:, 0], values)
             ax.set_title(label)
-            ax.set_xlabel(self.xchannel.currentText() + f' [{self.xunit.text() or "unknown unit"}]')
-            ax.set_ylabel(unit or 'unknown unit')
+            ax.set_xlabel(axis_label(self.xchannel.currentText(), normalize_unit(self.xunit.text()), 'unknown unit'))
+            ax.set_ylabel(axis_label(self.ychannel.currentText() if position == 1 else result.columns[1],
+                                     normalize_unit(unit), 'unknown unit'))
         self.canvas.draw_idle()
         self.status.setText(f'Preview of {len(result.values)} rows. Output unit: {result.column_units[1] or "unknown"}. Save adds a dataset to the project; use project Save to persist it.')
         self.save_button.setEnabled(True)
@@ -432,9 +478,9 @@ class MultiAnalysisDialog(W.QDialog):
                 ax.fill_between(x, y-sd, y+sd, alpha=.2, color=line.get_color(), label='±1 sample SD (not SEM)')
             counts.plot(x, d.values[:, -1], marker='.', label=d.name)
         ax.legend()
-        ax.set_ylabel(self.datasets[0].column_units[1] or 'unknown unit')
+        ax.set_ylabel(column_label(self.datasets[0], 1, 'unknown unit'))
         counts.set_ylabel('Count n')
-        counts.set_xlabel(self.sources[0].columns[self.sources[0].xcol])
+        counts.set_xlabel(column_label(self.datasets[0], 0, 'unknown unit'))
         self.canvas.draw_idle()
         self.status.setText(f'{len(self.datasets)} result(s). Per-X counts are plotted below and saved as the last column. '
                             'All selected inputs, revisions, channel choices and alignment settings are recorded.')
@@ -563,8 +609,8 @@ class BatchPipelineDialog(W.QDialog):
         d = self.datasets[max(0, self.result_choice.currentIndex())]
         ax = self.figure.add_subplot(111)
         ax.plot(d.values[:, 0], d.values[:, 1])
-        ax.set_xlabel(d.columns[0])
-        ax.set_ylabel(d.column_units[1] or 'unknown unit')
+        ax.set_xlabel(column_label(d, 0, 'unknown unit'))
+        ax.set_ylabel(column_label(d, 1, 'unknown unit'))
         ax.set_title(d.name)
         self.canvas.draw_idle()
 

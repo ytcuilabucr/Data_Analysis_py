@@ -238,3 +238,31 @@ def test_raw_derived_filter_survives_regrouping(app):
         window.history.setClean()
         window.update_dirty()
         window.close()
+
+
+def test_select_ticked_selects_only_shown_plotted_rows(window):
+    for name in ('Alpha', 'Beta', 'Gamma'):
+        window.add_dataset(parse_text('x,y\n0,1', name=name))
+    for row, ticked in enumerate((True, False, True)):
+        window.browser.item(row).setCheckState(C.Qt.CheckState.Checked if ticked else C.Qt.CheckState.Unchecked)
+    window.organization_actions['Select ticked'].trigger()
+    assert [d.name for d in window.selected_datasets()] == ['Alpha', 'Gamma']
+    assert window.current() is not None
+    window.search.setText('Gamma')
+    window.organization_actions['Select ticked'].trigger()
+    assert [d.name for d in window.selected_datasets()] == ['Gamma']
+
+
+def test_tick_and_untick_all_shown(window):
+    a = parse_text('x,y\n0,1\n1,2', name='Alpha')
+    b = parse_text('x,y\n0,1\n1,2', name='Beta')
+    window.add_dataset(a)
+    window.add_dataset(b)
+    window.organization_actions['Untick all shown'].trigger()
+    assert not a.visible and not b.visible
+    assert all(window.browser.item(i).checkState() == C.Qt.CheckState.Unchecked for i in range(2))
+    window.search.setText('alpha')
+    window.organization_actions['Tick all shown'].trigger()
+    assert a.visible and not b.visible  # Rows hidden by the search are left alone.
+    window.history.undo()
+    assert not a.visible

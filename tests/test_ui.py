@@ -331,3 +331,18 @@ def test_check_later_file_uncheck_first_then_change_channels():
     finally:
         window.dirty = False
         window.close()
+
+
+def test_garbage_collection_runs_only_on_main_thread(app):
+    import gc
+    from rogi.operations import MainThreadCollector, collect_on_main_thread
+    collector = collect_on_main_thread(app)
+    assert isinstance(collector, MainThreadCollector)
+    assert collect_on_main_thread(app) is collector
+    assert not gc.isenabled()
+    for _ in range(collector.threshold[0] + 10):
+        cycle = []
+        cycle.append(cycle)
+    before = gc.get_count()[0]
+    collector.check()
+    assert gc.get_count()[0] < before

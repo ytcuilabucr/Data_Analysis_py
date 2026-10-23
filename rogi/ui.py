@@ -28,9 +28,9 @@ from .dialogs import ImportDialog, SpmImportDialog, ImportGroupDialog, MetadataG
 from . import dataset_actions
 from .table_actions import DataTable
 from . import table_actions
-from . import plot_actions
+from . import plot_actions, plot_context
 from . import plot_windows
-from .operations import run_operation, set_editing_enabled, Cancelled, dialog_parent
+from .operations import run_operation, set_editing_enabled, Cancelled, dialog_parent, collect_on_main_thread
 from .history import ChangeCommand, CellCommand, CellsCommand
 from .grouping import group_path, path_key, path_label, node_label, partitions, varying_fields, field_labels, import_destinations
 from .spm import load_spm
@@ -38,7 +38,7 @@ from .scanfile import bundle_channels, consolidate_legacy
 from .images import ImageViewer
 from .metadata import attach_spectrum_metadata, metadata_fields, metadata_search_text, acquisition_timestamp, channel_count
 from .clipboard import MIME, selection_rectangle, copy_table, parse_paste
-from .plotting import MARKERS, LEGENDS, validate_view, display_values
+from .plotting import MARKERS, LEGENDS, PLOT_STYLE, validate_view, display_values
 from .core import Dataset, parse_text, spectrum_table, fit_dataset, export_data, export_fit, remove_datasets
 from .core import region_statistics
 from .project import save_project, load_project, convert_folder
@@ -115,6 +115,9 @@ class MainWindow(W.QMainWindow):
         self.preferences = project_preferences()
         self.saved_views = {}
         self.pipeline_presets = {}
+        self.plot_style = dict(PLOT_STYLE)
+        self.legend_labels = {}
+        self.curve_artists = {}
         self.dirty = False
         self.external_dirty = False
         self.replaying = False
@@ -275,6 +278,7 @@ class MainWindow(W.QMainWindow):
         self.plot_controls.set_color_requested.connect(self.set_color)
         self.plot_controls.appearance_changed_requested.connect(self.appearance_changed)
         self.plot_controls.presentation_changed_requested.connect(self.presentation_changed)
+        self.plot_controls.legend_changed_requested.connect(lambda: plot_context.legend_position_changed(self))
         self.plot_controls.add_curve_requested.connect(lambda dataset_id: self.guard(lambda: self.add_curve(dataset_id)))
         self.plot_controls.remove_curve_requested.connect(lambda dataset_id: self.guard(lambda: self.remove_curve(dataset_id)))
         self.plot_controls.curve_filter_changed_requested.connect(self.refresh_curves)
@@ -285,6 +289,7 @@ class MainWindow(W.QMainWindow):
         self.show_plot_controls.toggled.connect(lambda on: on and plot_windows.ensure_plot(self, plot_windows.LINE))
         self.plot_status.addPermanentWidget(self.coordinates)
         self.canvas.mpl_connect('motion_notify_event', self.cursor_motion)
+        self.canvas.mpl_connect('button_press_event', lambda event: plot_context.canvas_pressed(self, event))
         self.sync_axis_controls()
 
     def _build_statistics(self, layout):
@@ -396,6 +401,9 @@ class MainWindow(W.QMainWindow):
 
     def rename_dataset(self):
         return dataset_actions.rename_dataset(self)
+
+    def edit_units(self):
+        return dataset_actions.edit_units(self)
 
     def assign_group(self):
         return dataset_actions.assign_group(self)
@@ -751,6 +759,7 @@ class MainWindow(W.QMainWindow):
 
 def main():
     app = W.QApplication.instance() or W.QApplication(sys.argv)
+    collect_on_main_thread(app)
     window = MainWindow()
     window.show()
     window.fit_file_window()  # actual frame margins are known once shown

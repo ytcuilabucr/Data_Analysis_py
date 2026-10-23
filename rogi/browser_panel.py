@@ -136,7 +136,7 @@ class DatasetBrowser(W.QTreeWidget):
         super().__init__()
         self.setRootIsDecorated(False)
         self.setSelectionBehavior(W.QAbstractItemView.SelectionBehavior.SelectRows)
-        self.setHeaderLabels(['Dataset / plot', 'Favorite', 'Acquisition date', 'Channels', 'Tags', 'Comments'])
+        self.setHeaderLabels(['Plot / Dataset', 'Favorite', 'Acquisition date', 'Channels', 'Tags', 'Comments'])
         for column, width in enumerate((220, 65, 165, 75, 140, 220)):
             self.setColumnWidth(column, width)
         for column in HIDDEN_COLUMNS:
@@ -346,13 +346,17 @@ class BrowserPanel(W.QWidget):
                 ("Rename…", lambda: self.action_requested.emit('rename_dataset', ())), ("Assign group…", lambda: self.action_requested.emit('assign_group', ())),
                 ("Group by metadata or title…", lambda: self.action_requested.emit('group_by_metadata', ())),
                 ("View metadata…", lambda: self.action_requested.emit('view_metadata', ())),
+                ("Edit units…", lambda: self.action_requested.emit('edit_units', ())),
                 ("Toggle favorite ★", self.toggle_favorite),
                 ("Edit tags…", lambda: self.action_requested.emit('edit_tags', ())),
                 ("Edit comments…", lambda: self.action_requested.emit('edit_comments', ())),
                 ("Ungroup selected", lambda: self.action_requested.emit('set_selected_group', ("",))),
                 ("Show selected", lambda: self.action_requested.emit('set_selected_visibility', (True,))),
                 ("Hide selected", lambda: self.action_requested.emit('set_selected_visibility', (False,))),
+                ("Tick all shown", lambda: self.tick_shown(True)),
+                ("Untick all shown", lambda: self.tick_shown(False)),
                 ("Select all shown", self.select_all_shown),
+                ("Select ticked", self.select_ticked),
                 ("Clear selection", self.browser.clearSelection),
                 ("Remove selected…", lambda: self.action_requested.emit('remove_selected', ()))]:
             action = menu.addAction(label)
@@ -414,19 +418,42 @@ class BrowserPanel(W.QWidget):
         count = len(self.selected_datasets())
         self.selection_info.setText(f"{count} selected · checkboxes control plot")
         for label, action in self.organization_actions.items():
-            if label == "Rename…":
+            if label in ("Rename…", "Edit units…"):
                 action.setEnabled(count == 1)
-            elif label not in ("Select all shown", "Clear selection"):
+            elif label not in ("Tick all shown", "Untick all shown", "Select all shown", "Select ticked", "Clear selection"):
                 action.setEnabled(count > 0)
         self.selection_requested.emit(self.browser.currentRow())
 
 
+    def tick_shown(self, visible):
+        """Tick or untick the plot checkbox of every shown row as one undo step."""
+        shown = [self.dataset_for_item(item) for item in map(self.browser.item, range(self.browser.count()))
+                 if not item.isHidden()]
+        if shown:
+            self.attributes_requested.emit(shown, 'visible', visible,
+                                           f"{'Show' if visible else 'Hide'} {len(shown)} dataset(s)")
+
+
     def select_all_shown(self):
+        self.select_shown(lambda item: True)
+
+
+    def select_ticked(self):
+        """Select the shown rows whose plot checkbox is ticked."""
+        self.select_shown(lambda item: item.checkState() == C.Qt.CheckState.Checked)
+
+
+    def ticked_datasets(self):
+        return [self.dataset_for_item(item) for item in map(self.browser.item, range(self.browser.count()))
+                if not item.isHidden() and item.checkState() == C.Qt.CheckState.Checked]
+
+
+    def select_shown(self, keep):
         with C.QSignalBlocker(self.browser):
             self.browser.clearSelection()
             for row in range(self.browser.count()):
                 item = self.browser.item(row)
-                item.setSelected(not item.isHidden())
+                item.setSelected(not item.isHidden() and keep(item))
             selected = self.browser.selectedItems()
             if self.current() is None and selected:
                 self.browser.setCurrentItem(selected[0], C.QItemSelectionModel.SelectionFlag.NoUpdate)

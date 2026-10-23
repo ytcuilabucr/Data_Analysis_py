@@ -53,6 +53,10 @@ class Dataset:
         if (not isinstance(self.column_units, list) or (self.column_units and len(self.column_units) != len(self.columns))
                 or not all(isinstance(unit, str) for unit in self.column_units)):
             raise ValueError("Invalid column units.")
+        from .units import infer_unit, normalize_unit
+        # Units are stored once per column; older projects and plain tables only named them.
+        self.column_units = ([normalize_unit(u) for u in self.column_units] if self.column_units
+                             else [infer_unit(c) if isinstance(c, str) else '' for c in self.columns])
         if not isinstance(self.group, str):
             raise ValueError("Dataset group must be text.")
         if (not isinstance(self.group_path, list) or any(

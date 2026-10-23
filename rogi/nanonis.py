@@ -69,7 +69,7 @@ def parse_sxm(data, name='Imported scan', source=''):
         dataset = Dataset(f'{name} — {i+1}: {title}',
                           ['Sample', 'X pixel', 'Y pixel', signal_label],
                           np.column_stack((sample, sample % width, sample // width, values[i])),
-                          source=source, source_text=header, ycol=3)
+                          source=source, source_text=header, ycol=3, column_units=['', '', '', unit])
         dataset.instrument_metadata = dict(format='nanonis_sxm', version=1,
             source_dataset_id=dataset.id, sections=deepcopy(sections), unparsed=[])
         datasets.append(dataset)

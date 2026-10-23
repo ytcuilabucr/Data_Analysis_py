@@ -8,12 +8,15 @@ from copy import copy, deepcopy
 import numpy as np
 from PySide6 import QtCore as C, QtWidgets as W
 from matplotlib.transforms import Bbox
+from matplotlib.backend_bases import MouseButton
 from matplotlib.widgets import SpanSelector, Cursor, RectangleSelector
 from .core import region_statistics
 from .operations import dialog_parent
 from .plotting import display_values
+from .units import column_label, column_unit, custom_label, display_unit
 from .history import ChangeCommand
 from . import plot_windows
+from .plot_context import DraggableLegend
 
 # Above this many plotted points, legend placement "best" falls back to a fixed corner.
 BEST_LEGEND_POINTS = 100_000
@@ -453,25 +456,33 @@ def draw_plot(self):
             self.panel_fit_specs.append(sub[0])
         self.navigation.update()
     self.panel_log_notices = []
+    self.panel_unit_notices = []
     active_view = self.panels[self.active_panel]['view']
     if self.sync_x:
         for panel in self.panels:
             panel['view']['x'] = deepcopy(active_view['x'])
+    self.curve_artists = {}
     for i in [j for j in range(len(self.panels)) if j != self.active_panel] + [self.active_panel]:
         self.ax, self.resax = self.panel_axes[i]
         self.view = self.panels[i]['view']
         self.fit_plot_spec = self.panel_fit_specs[i]
         self.full_plot_spec = self.panel_grid[i]
+        self.panel_index = i
         self.draw_panel(i)
     if self.sync_x:
         limits = self.ax.get_xlim()
         for panel, pair in zip(self.panels, self.panel_axes):
             panel['view']['x']['limits'] = list(limits)
             pair[0].set_xlim(limits)
-    self.log_notice.setText(("Log axes require positive values. Not drawn: "
-                             + "; ".join(self.panel_log_notices)
-                             + ". Stored data and fits are unchanged.") if self.panel_log_notices else "")
-    self.log_notice.setVisible(bool(self.panel_log_notices))
+    notices = []
+    if self.panel_log_notices:
+        notices.append("Log axes require positive values. Not drawn: " + "; ".join(self.panel_log_notices)
+                       + ". Stored data and fits are unchanged.")
+    if self.panel_unit_notices:
+        notices.append("Mixed units share an axis (values are not converted): " + "; ".join(self.panel_unit_notices)
+                       + ". Use Organize → Edit units… to convert a copy.")
+    self.log_notice.setText("\n".join(notices))
+    self.log_notice.setVisible(bool(notices))
     self.shared_cursor_lines = [ax.axvline(0, visible=False, color='gray', linewidth=.7)
                                 for pair in self.panel_axes for ax in pair if ax.get_visible()]
     self.sync_axis_controls()
@@ -502,18 +513,22 @@ def _draw_datasets(self, panel_index, plotted_datasets, fitting):
     palette = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd',
                '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf']
     color_indices = {d.id: i for i, d in enumerate(self.datasets)}
+    # Right-click menus map artists back to their dataset.
+    self.curve_artists[self.ax] = artists = {}
     for d in plotted_datasets:
         if not d.visible:
             continue
         color = d.color or palette[color_indices[d.id] % len(palette)]
+        name = self.legend_labels.get(d.id) or d.name
+        drawn = len(self.ax.lines), len(self.ax.collections)
         x, y, excluded = display_values(d.values[:, d.xcol], d.values[:, d.ycol],
                                         self.view['x']['scale'], self.view['y']['scale'])
         if excluded:
             notices.append(f"{d.name}: {excluded} data row(s)")
         if d.style == 'Scatter':
-            self.ax.scatter(x, y, s=14, label=d.name, color=color, marker=d.marker or 'o')
+            self.ax.scatter(x, y, s=14, label=name, color=color, marker=d.marker or 'o')
         else:
-            self.ax.plot(x, y, label=d.name, color=color, marker=d.marker or 'None')
+            self.ax.plot(x, y, label=name, color=color, marker=d.marker or 'None')
         if (d.analysis and d.analysis.get('version') == 2 and d.analysis.get('operation') == 'mean'
                 and (d.xcol, d.ycol) == (0, 1)):
             sd = d.values[:, 2]
@@ -521,7 +536,7 @@ def _draw_datasets(self, panel_index, plotted_datasets, fitting):
             if self.view['y']['scale'] == 'log':
                 lower = np.where(lower > 0, lower, np.nan)
                 upper = np.where(upper > 0, upper, np.nan)
-            self.ax.fill_between(x, lower, upper, color=color, alpha=.2, label=d.name + ' ±1 sample SD (not SEM)')
+            self.ax.fill_between(x, lower, upper, color=color, alpha=.2, label=name + ' ±1 sample SD (not SEM)')
         if fitting and d.fit and (d.fit['xcol'], d.fit['ycol']) == (d.xcol, d.ycol):
             fit = d.fit
             order = np.argsort(fit['x'])
@@ -529,9 +544,10 @@ def _draw_datasets(self, panel_index, plotted_datasets, fitting):
                                            self.view['x']['scale'], self.view['y']['scale'])
             if count:
                 notices.append(f"{d.name}: {count} fit point(s)")
-            self.ax.plot(fx, fy, '--', label=d.name + ' fit', color=color)
+            self.ax.plot(fx, fy, '--', label=name + ' fit', color=color)
             rx, ry, _ = display_values(fit['x'], fit['residuals'], self.view['x']['scale'], 'linear')
-            self.resax.scatter(rx, ry, s=10, label=d.name, color=color)
+            self.resax.scatter(rx, ry, s=10, label=name, color=color)
+        artists.update({artist: d.id for artist in self.ax.lines[drawn[0]:] + self.ax.collections[drawn[1]:]})
     self.panel_log_notices.extend(
         (f'Panel {panel_index + 1}: ' if len(self.panels) > 1 else '') + notice
         for notice in notices)
@@ -541,17 +557,31 @@ def _draw_labels(self, panel_index, plotted_datasets, active, fitting):
     panel_title = self.title.text()
     if len(self.panels) > 1:
         panel_title = f"Panel {panel_index + 1}" + (' (active)' if active else '') + (f' — {panel_title}' if panel_title else '')
-    self.ax.set_title(panel_title)
+    style = self.plot_style
+    self.ax.set_title(panel_title, **({'fontsize': style['title_size']} if style['title_size'] else {}))
     visible = [d for d in plotted_datasets if d.visible]
-    x_label = ', '.join(dict.fromkeys(d.columns[d.xcol] for d in visible)) or 'X'
-    y_label = ', '.join(dict.fromkeys(d.columns[d.ycol] for d in visible)) or 'Y'
+    x_units = [column_unit(d, d.xcol) for d in visible]
+    y_units = [column_unit(d, d.ycol) for d in visible]
+    x_label = ', '.join(dict.fromkeys(column_label(d, d.xcol) for d in visible)) or 'X'
+    y_label = ', '.join(dict.fromkeys(column_label(d, d.ycol) for d in visible)) or 'Y'
+    for axis, units in (('X', x_units), ('Y', y_units)):
+        if len(set(units)) > 1:
+            self.panel_unit_notices.append((f'Panel {panel_index + 1} ' if len(self.panels) > 1 else '')
+                                           + f'{axis}: ' + ', '.join(display_unit(u) or 'unknown' for u in dict.fromkeys(units)))
     self.xlabel.setPlaceholderText(x_label)
     self.ylabel.setPlaceholderText(y_label)
-    self.ax.set_ylabel(self.panels[panel_index].get('ylabel', self.ylabel.text() if len(self.panels) == 1 else '') or y_label)
-    self.resax.set_xlabel(self.xlabel.text() or x_label)
+    y_text = self.panels[panel_index].get('ylabel', self.ylabel.text() if len(self.panels) == 1 else '')
+    self.ax.set_ylabel(custom_label(y_text, y_units) if y_text.strip() else y_label)
+    self.resax.set_xlabel(custom_label(self.xlabel.text(), x_units) if self.xlabel.text().strip() else x_label)
     self.ax.set_xlabel("" if fitting else self.resax.get_xlabel())
     self.resax.set_ylabel("Residual")
     self.resax.axhline(0, color='gray', linewidth=0.8)
+    for axes in (self.ax, self.resax):
+        if style['label_size']:
+            axes.xaxis.label.set_fontsize(style['label_size'])
+            axes.yaxis.label.set_fontsize(style['label_size'])
+        if style['tick_size']:
+            axes.tick_params(labelsize=style['tick_size'])
 
 
 def _apply_plot_axes(self):
@@ -577,6 +607,7 @@ def _apply_plot_axes(self):
         elif state['limits'] is not None:
             getattr(axes, 'set_' + coordinate + 'lim')(state['limits'])
         state['limits'] = list(getattr(axes, 'get_' + coordinate + 'lim')())
+    style = self.plot_style
     for axes in (self.ax, self.resax):
         axes.grid(True, alpha=0.2)
         if axes.get_legend_handles_labels()[0] and self.legend_position.currentText() != 'hidden':
@@ -584,7 +615,11 @@ def _apply_plot_axes(self):
             # 'best' scans every plotted point on each draw (~0.5 s for a 1M-point scan).
             if loc == 'best' and sum(len(line.get_xdata()) for line in axes.get_lines()) > BEST_LEGEND_POINTS:
                 loc = 'upper right'
-            axes.legend(fontsize=8, loc=loc)
+            anchor = self.panels[self.panel_index].get('legend_anchor') if axes is self.ax else None
+            legend = axes.legend(fontsize=style['legend_size'], loc=tuple(anchor) if anchor else loc,
+                                 ncols=style['legend_columns'], frameon=style['legend_frame'])
+            if axes is self.ax:
+                DraggableLegend(self, legend, self.panel_index)
     # Interactive artists must not participate in automatic data limits.
     # Automatic ranges are recomputed explicitly on the next redraw.
     for axes in (self.ax, self.resax):
@@ -595,16 +630,17 @@ def _apply_plot_axes(self):
 def _build_interaction(self, active):
     if active:
         self.refresh_statistics()
-        self.span = SpanSelector(self.ax, self.range_selected, 'horizontal', useblit=True,
+        # Left button only: the right button opens the plot's context menu.
+        self.span = SpanSelector(self.ax, self.range_selected, 'horizontal', useblit=True, button=MouseButton.LEFT,
                                  interactive=True, props=dict(alpha=0.2, facecolor='tab:blue'))
         self.span.set_active(self.drag.isChecked())
         if self.stats_mode.currentIndex() == 0:
             self.stats_selector = SpanSelector(self.ax, self.statistics_selected, 'horizontal',
-                                               useblit=True, interactive=True,
+                                               useblit=True, interactive=True, button=MouseButton.LEFT,
                                                props=dict(alpha=.18, facecolor='tab:green'))
         else:
             self.stats_selector = RectangleSelector(self.ax, self.statistics_rectangle_selected,
-                                                    useblit=True, interactive=True,
+                                                    useblit=True, interactive=True, button=MouseButton.LEFT,
                                                     props=dict(alpha=.18, facecolor='tab:green'))
         if self.stats_region is not None and self.show_statistics.isChecked():
             self.stats_selector.extents = (self.stats_region[:2] if self.stats_mode.currentIndex() == 0

@@ -85,13 +85,23 @@ def scan_dimensions(dataset):
     return dimensions
 
 
+def _length_display(dimensions):
+    largest = max(dimensions)
+    return ((1., 'm') if largest >= 1 else (1e-3, 'mm') if largest >= 1e-3
+            else (1e-6, 'µm') if largest >= 1e-6 else (1e-9, 'nm'))
+
+
 def image_geometry(dataset, shape):
     """Return pixel-edge extent and axis labels; do not resample observations."""
     dimensions = scan_dimensions(dataset)
     if dimensions is None:
         height, width = shape
         return (-.5, width-.5, -.5, height-.5), 'X pixel', 'Y pixel'
-    largest = max(dimensions)
-    scale, unit = ((1., 'm') if largest >= 1 else (1e-3, 'mm') if largest >= 1e-3
-                   else (1e-6, 'µm') if largest >= 1e-6 else (1e-9, 'nm'))
+    scale, unit = _length_display(dimensions)
     return (0., dimensions[0]/scale, 0., dimensions[1]/scale), f'X ({unit})', f'Y ({unit})'
+
+
+def coordinate_unit(dataset):
+    """Unit of image_geometry's extent: a length unit, or 'pixel' without calibration."""
+    dimensions = scan_dimensions(dataset)
+    return 'pixel' if dimensions is None else _length_display(dimensions)[1]

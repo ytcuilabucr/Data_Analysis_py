@@ -11,6 +11,8 @@ from PySide6 import QtCore as C, QtWidgets as W
 @pytest.fixture(scope='session', autouse=True)
 def app():
     application = W.QApplication.instance() or W.QApplication([])
+    from rogi.operations import collect_on_main_thread
+    collect_on_main_thread(application)
     yield application
     # Qt must dispose its widgets before Python tears down QApplication.
     for widget in application.topLevelWidgets():

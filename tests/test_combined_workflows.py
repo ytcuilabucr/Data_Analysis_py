@@ -3,10 +3,12 @@ import time
 
 import numpy as np
 import pytest
-from PySide6 import QtWidgets as W
+from PySide6 import QtCore as C, QtWidgets as W
 
+import rogi.analysis_ui as analysis_ui
 from rogi.analysis_ui import AnalysisDialog
 from rogi.core import Dataset
+from rogi.presets import make_preset
 from rogi.project import load_project
 from rogi.ui import ImportDialog, MainWindow
 
@@ -172,3 +174,31 @@ def test_all_project_commands_show_on_toolbar(window):
     w.pipeline_presets_changed()
     assert w.project_actions['Apply pipeline preset…'].isEnabled()
     assert not w.project_actions['Reopen analysis recipe…'].isEnabled()
+
+
+def test_operations_keep_analysis_commands_disabled_when_inapplicable(window):
+    w = window
+    w.run_operation('Test unlock', lambda: None)
+    assert not w.project_actions['Apply pipeline preset…'].isEnabled()
+    assert not w.project_actions['Reopen analysis recipe…'].isEnabled()
+    assert w.project_actions['Analysis pipeline…'].isEnabled()
+
+
+@pytest.mark.parametrize('answer, expected', [
+    (W.QMessageBox.StandardButton.Yes, ['a', 'c']),
+    (W.QMessageBox.StandardButton.No, ['c']),
+    (W.QMessageBox.StandardButton.Cancel, None)])
+def test_apply_preset_offers_ticked_datasets(window, monkeypatch, answer, expected):
+    for name in 'abc':
+        window.add_dataset(Dataset(name, ['x', 'y'], np.array([[0., 1.], [1., 2.], [2., 5.]])))
+    for row, ticked in enumerate((True, False, True)):
+        window.browser.item(row).setCheckState(C.Qt.CheckState.Checked if ticked else C.Qt.CheckState.Unchecked)
+    window.browser.setCurrentRow(2)
+    window.pipeline_presets = {'p': make_preset([{'operation': 'mean_subtract', 'parameters': {}}])}
+    window.pipeline_presets_changed()
+    monkeypatch.setattr(W.QMessageBox, 'question', lambda *a, **k: answer)
+    opened = []
+    monkeypatch.setattr(analysis_ui.BatchPipelineDialog, 'exec',
+                        lambda dialog: opened.append([s.name for s in dialog.sources]) or 0)
+    window.project_actions['Apply pipeline preset…'].trigger()
+    assert opened == ([] if expected is None else [expected])

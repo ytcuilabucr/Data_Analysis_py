@@ -14,6 +14,7 @@ from .scanfile import consolidate_legacy
 from .grouping import path_label
 from .navigation import export_figure
 from .operations import dialog_parent
+from .plotting import PLOT_STYLE
 from . import plot_windows
 from .command_bar import CommandBar
 from .files import (DATA_SUFFIXES, SCAN_SUFFIXES, is_project, natural_key, resolved, read_data_file,
@@ -389,6 +390,7 @@ def restore_view(self, name):
     self.loading = True
     for field in ('title', 'xlabel', 'ylabel'):
         getattr(self, field).setText(settings.get(field, ''))
+    restore_plot_style(self, settings)
     self.legend_position.setCurrentText(settings.get('legend', 'best'))
     self.cursor_enabled.setChecked(settings.get('cursor', False))
     self.show_fitting.setChecked(settings.get('show_fitting', False))
@@ -408,11 +410,17 @@ def restore_view(self, name):
         self.statusBar().showMessage(f"Restored view; skipped {len(missing)} missing dataset(s).", 6000)
 
 
+def restore_plot_style(self, settings):
+    self.plot_style = {**PLOT_STYLE, **settings.get('plot_style', {})}
+    self.legend_labels = dict(settings.get('legend_labels', {}))
+
+
 def settings(self):
     settings = dict(title=self.title.text(), xlabel=self.xlabel.text(), ylabel=self.ylabel.text(),
                     selected_dataset_id=self.current().id if self.current() else None,
                     legend=self.legend_position.currentText(), cursor=self.cursor_enabled.isChecked(),
-                    show_fitting=self.show_fitting.isChecked())
+                    show_fitting=self.show_fitting.isChecked(), plot_style=dict(self.plot_style),
+                    legend_labels=dict(self.legend_labels))
     for axis, state in self.view.items():
         settings.update({axis + 'scale': state['scale'], axis + 'auto': state['auto'],
                          axis + 'lim': state['limits']})
@@ -516,6 +524,7 @@ def open_project(self, path=None, *, confirm=True):
             self.result.clear()
             for field in ('title', 'xlabel', 'ylabel'):
                 getattr(self, field).setText(settings.get(field, ''))
+            restore_plot_style(self, settings)
             self.datasets = datasets
             self.refresh_history_view()
             if datasets:
