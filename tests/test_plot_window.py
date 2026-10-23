@@ -218,6 +218,10 @@ def test_prominent_button_opens_and_raises_the_plot(window, app):
 def test_data_table_is_optional_and_remembered(window, app):
     from rogi.ui import COMPACT_FILE_WIDTH
     assert not window.table.isVisible() and window.show_table_button.text() == 'Show data table'
+    # The Files panel is shown by default and widens the window; hiding it is remembered too.
+    assert window.files_panel.isVisible() and window.show_files_button.text() == 'Hide files'
+    window.show_files_button.click()
+    assert not window.files_panel.isVisible() and window.show_files_button.text() == 'Show files'
     compact = window.width()
     assert compact <= COMPACT_FILE_WIDTH
     assert window.preferences.value('data_table_shown') is None  # nothing stored until chosen

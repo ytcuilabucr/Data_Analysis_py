@@ -159,10 +159,9 @@ def test_shortcut_dispatch_and_clipboard(window, monkeypatch, tmp_path):
     QtTest.QTest.keySequence(window.table, G.QKeySequence(G.QKeySequence.StandardKey.SaveAs))
     assert destination.exists()
     calls = []
-    monkeypatch.setattr(W.QFileDialog, 'getOpenFileName', lambda *a, **k: (calls.append(a[1]) or '', ''))
+    monkeypatch.setattr(W.QFileDialog, 'getOpenFileNames', lambda *a, **k: (calls.append(a[1]) or [], ''))
     QtTest.QTest.keySequence(window.table, G.QKeySequence(G.QKeySequence.StandardKey.Open))
-    QtTest.QTest.keySequence(window.table, G.QKeySequence('Ctrl+I'))
-    assert calls == ['Open project', 'Import numeric data']
+    assert calls == ['Open']
     restored, _ = load_project(destination)
     assert restored[1].revision == window.current().revision
 
@@ -171,11 +170,11 @@ def test_paste_disabled_during_fit(window):
     window.select_table_block(0, 0, 1, 1)
     window.start_fit()
     assert not window.paste_action.isEnabled()
-    assert not window.project_actions['Open project…'].isEnabled()
+    assert not window.project_actions['Open…'].isEnabled()
     window.worker.wait(10000)
     W.QApplication.processEvents()
     assert window.paste_action.isEnabled()
-    assert window.project_actions['Open project…'].isEnabled()
+    assert window.project_actions['Open…'].isEnabled()
 
 
 def test_numeric_column_names_do_not_consume_data(window):

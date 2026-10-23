@@ -111,14 +111,14 @@ def test_import_action(tmp_path, monkeypatch):
     app = W.QApplication.instance() or W.QApplication([])
     path = tmp_path / 'scan.SPM'
     path.write_bytes(spm_bytes())
-    monkeypatch.setattr(W.QFileDialog, 'getOpenFileName', lambda *a: (str(path), ''))
+    monkeypatch.setattr(W.QFileDialog, 'getOpenFileNames', lambda *a: ([str(path)], ''))
     def accept(dialog):
         dialog.import_data()
         return dialog.result()
     monkeypatch.setattr(SpmImportDialog, 'exec', accept)
     window = MainWindow()
     try:
-        window.import_file()
+        window.open_files()
         assert len(window.datasets) == 1
         assert window.browser.count() == 1
         assert len(window.datasets[0].instrument_metadata['channels']) == 2

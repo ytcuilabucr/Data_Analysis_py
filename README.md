@@ -27,17 +27,19 @@ exact test command are in [VALIDATION.md](VALIDATION.md).
 
 ## Quick start
 
-- **Import…** `examples/gaussian.csv` or `examples/linear.tsv`; inspect the preview
-  and select numeric columns.
+- **Open…** `examples/gaussian.csv` or `examples/linear.tsv`; inspect the preview
+  and select numeric columns. The **Files** panel lists a whole data folder for
+  batch and automatic loading.
 - Select a dataset and its X/Y channels. Check datasets to overlay them.
 - Raw data is read-only. Use **Editable copy** before changing table cells.
 - Enable **View → Show fitting**, choose a model and range, then **Fit selected dataset**.
-- **Save as…** writes a portable Rogi HDF5 project; **Open project…** restores it.
+- **Save as…** writes a portable Rogi HDF5 project; **Open…** restores it.
   Export data or fits as CSV, and plots as PNG/SVG.
 
 ## Feature overview
 
-- Text, Spectrum DAT, Bruker SPM and Nanonis SXM imports; folder conversion.
+- Text, Spectrum DAT, Bruker SPM and Nanonis SXM imports; a Files panel for batch and
+  automatic loading from a data folder; folder conversion.
 - Metadata search, grouping, annotations, table clipboard and undo/redo.
 - Line/scatter plots, channel controls, statistics, fitting and saved views.
 - Scan images, cursor profiles, spectrum maps, analysis pipelines and presets.

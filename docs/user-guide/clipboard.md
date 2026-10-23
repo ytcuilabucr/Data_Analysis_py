@@ -6,8 +6,7 @@ The File menu and toolbar share these shortcuts (use **Cmd** on macOS and **Ctrl
 
 | Action | Shortcut |
 | --- | --- |
-| Import text data | Cmd/Ctrl+I |
-| Open project | Cmd/Ctrl+O |
+| Open project or load data files | Cmd/Ctrl+O |
 | Save | Cmd/Ctrl+S |
 | Save as | Cmd/Ctrl+Shift+S |
 | Copy table selection with headers | Cmd/Ctrl+C |

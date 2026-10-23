@@ -4,8 +4,7 @@ import io
 from copy import deepcopy
 from pathlib import Path
 from PySide6 import QtCore as C, QtWidgets as W
-from .core import parse_text, spectrum_table
-from .metadata import attach_spectrum_metadata
+from .files import read_text_import, parse_text_import, channel_key
 from .spm import load_spm
 from .scanfile import bundle_channels
 from .grouping import path_label, path_key, partitions, varying_fields, field_labels, import_destinations, grouping_fields
@@ -101,6 +100,11 @@ class ImportDialog(W.QDialog):
         except (ValueError, csv.Error) as error:
             self.message.setText(str(error))
 
+    def template(self):
+        """The accepted choices, reusable for files with the same layout."""
+        return dict(delimiter=self.delimiter.currentData(), header=self.header.isChecked(),
+                    columns=list(self.dataset.columns))
+
 
 
 class SpmImportDialog(W.QDialog):
@@ -161,6 +165,11 @@ class SpmImportDialog(W.QDialog):
             self.datasets = []
             return
         self.accept()
+
+    def template(self):
+        """The accepted channels, reusable for scans with the same channels."""
+        return dict(channels=[channel_key(d) for i, d in enumerate(self.channels)
+                              if self.channel_list.item(i).checkState() == C.Qt.CheckState.Checked])
 
 
 
@@ -394,17 +403,3 @@ class MetadataDialog(W.QDialog):
         buttons = W.QDialogButtonBox(W.QDialogButtonBox.StandardButton.Close)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
-
-
-def read_text_import(path):
-    text = path.read_bytes().decode('utf-8')
-    table = spectrum_table(text) if path.suffix.lower() == '.dat' else None
-    return text, table
-
-
-def parse_text_import(path, text, table_text, delimiter, header, selected):
-    dataset = parse_text(table_text, delimiter, header, selected, path.stem, str(path))
-    dataset.source_text = text
-    if path.suffix.lower() == '.dat':
-        attach_spectrum_metadata(dataset, text)
-    return dataset

@@ -94,6 +94,7 @@ def refresh_history_view(self):
         self.browser.sortItems(self.browser.sorted_column, self.browser.sort_order)
     self.update_groups()
     self.filter_browser()
+    self.files_panel.update_loaded()
     model = self.table.model()
     if model and model.dataset.id == table_dataset_id:
         selection = C.QItemSelection()

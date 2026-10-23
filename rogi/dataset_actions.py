@@ -191,6 +191,20 @@ def add_dataset(self, dataset):
         self.history.push(ChangeCommand(self, f"{label} {dataset.name}", apply, revert))
 
 
+def add_datasets(self, datasets):
+    """Import several files as one undo step; a single file keeps its own label."""
+    if len(datasets) == 1:
+        return self.add_dataset(datasets[0])
+    def apply():
+        self.datasets.extend(datasets)
+        self.history_selection = {d.id for d in datasets}
+        with C.QSignalBlocker(self.browser):
+            self.browser.setCurrentItem(None)
+    def revert():
+        self.datasets = remove_datasets(self.datasets, {d.id for d in datasets})
+    self.history.push(ChangeCommand(self, f"Import {len(datasets)} files", apply, revert))
+
+
 def spectrum_map(self, recipe=None):
     from .maps_ui import MapDialog
     sources = self.selected_datasets()

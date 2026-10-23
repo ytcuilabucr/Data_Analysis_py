@@ -19,6 +19,8 @@ from .canvas import ResponsiveCanvas as FigureCanvasQTAgg
 from matplotlib.widgets import SpanSelector, Cursor, RectangleSelector
 from .browser_panel import BrowserPanel, BrowserState, BrowserItem, DatasetBrowser, populate_group_tree
 from .plot_controls_panel import PlotControlsPanel
+from .files_panel import FilesPanel
+from .files import loaded_sources
 from .fitting_panel import FittingPanel, FitWorker
 from . import project_actions as project_commands
 from .screen import fit_to_screen
@@ -46,6 +48,7 @@ from .project import save_project, load_project, convert_folder
 # without the optional data table it is only as wide as the dataset list.
 FILE_WINDOW_SIZE = (1150, 760)
 COMPACT_FILE_WIDTH = 520
+FILES_PANEL_WIDTH = 400
 
 
 def project_preferences():
@@ -64,6 +67,7 @@ class MainWindow(W.QMainWindow):
         central_layout.addWidget(self.project_toolbar)
         central_layout.addLayout(self._build_file_buttons())
         splitter = W.QSplitter()
+        self._build_files(splitter)
         self._build_browser(splitter)
         self._build_center(splitter)
         layout = self._build_analysis_container(splitter)
@@ -81,6 +85,12 @@ class MainWindow(W.QMainWindow):
         with C.QSignalBlocker(self.show_table_button):
             self.show_table_button.setChecked(shown)
         self.set_table_shown(shown, remember=False)
+        files_shown = self.preferences.value('files_panel_shown', True, type=bool)
+        with C.QSignalBlocker(self.show_files_button):
+            self.show_files_button.setChecked(files_shown)
+        self.set_files_shown(files_shown, remember=False)
+        project_commands.restore_files_folder(self)
+        self.setAcceptDrops(True)
 
     @property
     def datasets(self):
@@ -121,12 +131,22 @@ class MainWindow(W.QMainWindow):
         self.stats_region = None
         self.stats_context = None
         self.plot_stale = False
+        self.last_import_group = None
         self.setWindowTitle("Rogi — Scientific Analysis")
         fit_to_screen(self, COMPACT_FILE_WIDTH, FILE_WINDOW_SIZE[1])
         self.history = G.QUndoStack(self)
 
     def _build_menus(self):
         return project_commands._build_menus(self)
+
+    def _build_files(self, splitter):
+        self.files_panel = FilesPanel()
+        self.files_panel.load_requested.connect(self.load_from_panel)
+        self.files_panel.open_project_requested.connect(lambda path: self.guard(lambda: self.open_project(path)))
+        self.files_panel.convert_requested.connect(lambda folder: self.guard(lambda: self.convert_folder(folder)))
+        self.files_panel.folder_changed.connect(lambda folder: project_commands.remember_files_folder(self, folder))
+        self.files_panel.loaded_sources = lambda: loaded_sources(self.datasets)
+        splitter.addWidget(self.files_panel)
 
     def _build_browser(self, splitter):
         self.browser_panel = BrowserPanel(self.browser_state)
@@ -194,6 +214,11 @@ class MainWindow(W.QMainWindow):
     def _build_file_buttons(self):
         row = W.QHBoxLayout()
         row.setContentsMargins(8, 6, 8, 0)
+        self.show_files_button = W.QPushButton("Show files")
+        self.show_files_button.setCheckable(True)
+        self.show_files_button.setToolTip("List a data folder to browse, preview and load its files")
+        self.show_files_button.toggled.connect(self.set_files_shown)
+        row.addWidget(self.show_files_button)
         self.open_plot_button = plot_windows.open_button()
         row.addWidget(self.open_plot_button)
         self.show_table_button = W.QPushButton("Show data table")
@@ -217,7 +242,7 @@ class MainWindow(W.QMainWindow):
         self.line_view.setCollapsible(0, False)
         self.line_view.setSizes([680, 380])
         plot_windows.build(self, self.show_fitting.parent(), self.project_toolbar)
-        splitter.setSizes([420, 730])
+        splitter.setSizes([FILES_PANEL_WIDTH, 420, 730])
         return layout
 
     def _build_channels(self, layout):
@@ -402,9 +427,21 @@ class MainWindow(W.QMainWindow):
     def set_table_shown(self, shown, remember=True):
         return table_actions.set_table_shown(self, shown, remember)
 
+    def set_files_shown(self, shown, remember=True):
+        """The Files panel sits left of the dataset list; hidden, the window narrows again."""
+        if remember:
+            self.preferences.setValue('files_panel_shown', shown)
+        self.files_panel.setVisible(shown)
+        self.show_files_button.setText("Hide files" if shown else "Show files")
+        # Recompute the window's minimum width now, or it still includes the hidden panel.
+        self.layout().activate()
+        self.fit_file_window()
+
     def fit_file_window(self):
-        """Size for the dataset list, plus the data table when it is shown; height is kept once on screen."""
+        """Size for the dataset list, plus the files panel and data table when shown; height is kept once on screen."""
         width = FILE_WINDOW_SIZE[0] if self.table.isVisibleTo(self) else COMPACT_FILE_WIDTH
+        if hasattr(self, 'files_panel') and self.files_panel.isVisibleTo(self):
+            width += FILES_PANEL_WIDTH
         fit_to_screen(self, width, self.height() if self.isVisible() else FILE_WINDOW_SIZE[1])
 
     def update_dirty(self, *args):
@@ -437,11 +474,28 @@ class MainWindow(W.QMainWindow):
     def add_dataset(self, dataset):
         return dataset_actions.add_dataset(self, dataset)
 
-    def import_file(self):
-        return project_commands.import_file(self)
+    def add_datasets(self, datasets):
+        return dataset_actions.add_datasets(self, datasets)
 
-    def convert_folder(self):
-        return project_commands.convert_folder(self)
+    def open_files(self, paths=None):
+        return project_commands.open_files(self, paths)
+
+    def import_paths(self, paths, **options):
+        return project_commands.import_paths(self, paths, **options)
+
+    def load_from_panel(self, paths, options):
+        if options.get('grouping') == 'last':
+            return project_commands.auto_load(self, paths, options)
+        self.guard(lambda: self.import_paths(paths, **options))
+
+    def convert_folder(self, folder=None):
+        return project_commands.convert_folder(self, folder)
+
+    def dragEnterEvent(self, event):
+        return project_commands.drag_enter(self, event)
+
+    def dropEvent(self, event):
+        return project_commands.drop(self, event)
 
     def select(self, row):
         return table_actions.select(self, row)

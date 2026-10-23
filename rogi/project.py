@@ -7,10 +7,9 @@ from pathlib import Path
 import tempfile
 import numpy as np
 import h5py
-from .core import Dataset, MODELS, parse_text, parse_dat
+from .core import Dataset, MODELS
+from .files import DATA_SUFFIXES, read_data_file, folder_group
 from .hdf5 import save_hdf5, load_hdf5
-from .spm import load_spm
-from .scanfile import bundle_channels
 from .metadata import validate_metadata
 from .plotting import validate_view, validate_appearance
 from .presets import validate_presets
@@ -31,39 +30,22 @@ def convert_folder(folder, destination, *, cancel_check=None, before_save=None):
         raise ValueError(f'Input folder does not exist or is not a directory: {folder}')
     def scan_error(error):
         raise error
-    supported = {'.csv', '.tsv', '.txt', '.dat', '.spm', '.sxm'}
     paths = sorted(Path(directory) / name
                    for directory, _, names in os.walk(folder, onerror=scan_error, followlinks=False)
-                   for name in names if Path(name).suffix.lower() in supported)
+                   for name in names if Path(name).suffix.lower() in DATA_SUFFIXES)
     if not paths:
         raise ValueError('No CSV, TSV, TXT, DAT, SPM, or SXM files found in the selected folder or its subfolders.')
     datasets = []
     for path in paths:
         if cancel_check:
             cancel_check()
-        relative = path.relative_to(folder)
-        group = '' if relative.parent == Path('.') else relative.parent.as_posix()
         try:
-            if path.suffix.lower() in ('.spm', '.sxm'):
-                imported = [bundle_channels(load_spm(path), name=path.stem)]
-            else:
-                text = path.read_bytes().decode('utf-8')
-                if path.suffix.lower() == '.dat':
-                    dataset = parse_dat(text, name=path.stem, source=str(path.resolve()))
-                else:
-                    try:
-                        delimiter = csv.Sniffer().sniff(text[:65536], delimiters=',\t;').delimiter
-                    except csv.Error:
-                        delimiter = ',' if path.suffix.lower() == '.csv' else '\t'
-                    dataset = parse_text(text, delimiter=delimiter, name=path.stem, source=str(path.resolve()))
-                dataset.source_text = text
-                imported = [dataset]
-            for dataset in imported:
-                dataset.group = group
-                dataset.visible = not datasets
-                datasets.append(dataset)
+            dataset = read_data_file(path)
         except (ValueError, OSError, UnicodeError, csv.Error) as error:
-            raise ValueError(f'{relative.as_posix()}: {error}') from error
+            raise ValueError(f'{path.relative_to(folder).as_posix()}: {error}') from error
+        dataset.group = folder_group(path, folder)
+        dataset.visible = not datasets
+        datasets.append(dataset)
     if cancel_check:
         cancel_check()
     if before_save:

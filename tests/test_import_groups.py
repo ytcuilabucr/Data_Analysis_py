@@ -70,7 +70,7 @@ def test_import_existing_hdf5_override_cancel_undo_save(tmp_path, monkeypatch, a
     save_project(target, [original], {'title': 'Keep title'})
     source = tmp_path / 'additional.dat'
     source.write_text('[Scan]\nSize: 5 nm\nRate: 1 Hz\n[Data]\nx\ty\n3\t4\n')
-    monkeypatch.setattr(W.QFileDialog, 'getOpenFileName', lambda *a: (str(source), ''))
+    monkeypatch.setattr(W.QFileDialog, 'getOpenFileNames', lambda *a: ([str(source)], ''))
     def preview(dialog):
         dialog.import_data()
         return dialog.result()
@@ -80,7 +80,7 @@ def test_import_existing_hdf5_override_cancel_undo_save(tmp_path, monkeypatch, a
         window.open_project(target)
         before = target.read_bytes()
         monkeypatch.setattr(ImportGroupDialog, 'exec', lambda dialog: 0)
-        window.import_file()
+        window.open_files()
         assert len(window.datasets) == 1 and not window.dirty
         assert target.read_bytes() == before
         chosen = deepcopy(original.group_path[:1])
@@ -90,7 +90,7 @@ def test_import_existing_hdf5_override_cancel_undo_save(tmp_path, monkeypatch, a
             return 1
         monkeypatch.setattr(ImportGroupDialog, 'exec', choose)
         window.search.setText('invisible')
-        window.import_file()
+        window.open_files()
         assert len(window.datasets) == 2 and window.dirty
         assert window.datasets[-1].group_path == chosen
         assert window.current().id == window.datasets[-1].id
