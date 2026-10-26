@@ -1,7 +1,9 @@
 """Right-click menus for line-plot elements and the draggable legend.
 
 Each element (title, axis labels, legend, legend entries, curves, the axes
-background) opens a menu with the controls that apply to it. Edits go through
+background) opens a menu with the controls that apply to it. An axis label or
+its tick labels opens the Format Axis dialog instead, on a right-click or a
+double-click. Edits go through
 the same window state as the plot controls panel, so both stay in agreement.
 """
 from PySide6 import QtGui as G, QtWidgets as W
@@ -38,11 +40,18 @@ def drag_blocked(window):
 
 
 def canvas_pressed(window, event):
-    if event.button != MouseButton.RIGHT or window.navigation.mode:
+    if window.navigation.mode:
         return  # zoom and pan use the right button themselves
-    menu = context_menu(window, event)
-    if menu is not None:
-        menu.exec(G.QCursor.pos())
+    right = event.button == MouseButton.RIGHT
+    if not right and not (event.button == MouseButton.LEFT and event.dblclick):
+        return
+    target = hit(window, event)
+    if target is not None and target[0] in ('xlabel', 'ylabel'):
+        window.guard(lambda: format_axis(window, target[0][0], target[1]))
+    elif right:
+        menu = context_menu(window, event)
+        if menu is not None:
+            menu.exec(G.QCursor.pos())
 
 
 def legend_position_changed(window):
@@ -65,6 +74,10 @@ def hit(window, event):
             return 'xlabel', index, None
         if ax.yaxis.label.contains(event)[0]:
             return 'ylabel', index, None
+        if any(axes.get_visible() and on_tick_labels(window, axes, axes.xaxis, event) for axes in (ax, resax)):
+            return 'xlabel', index, None
+        if on_tick_labels(window, ax, ax.yaxis, event):
+            return 'ylabel', index, None
         if event.inaxes is ax:
             curve = next((dataset_id for artist, dataset_id in window.curve_artists.get(ax, {}).items()
                           if artist.contains(event)[0]), None)
@@ -72,6 +85,12 @@ def hit(window, event):
         if event.inaxes is resax and resax.get_visible():
             return 'axes', index, None
     return None
+
+
+def on_tick_labels(window, axes, axis, event):
+    """Whether the event is beside the axes, where this axis draws its ticks and tick labels."""
+    box = axis.get_tightbbox(window.canvas.get_renderer())
+    return box is not None and box.contains(event.x, event.y) and not axes.bbox.contains(event.x, event.y)
 
 
 def legend_entry(window, ax, legend, event):
@@ -85,14 +104,12 @@ def legend_entry(window, ax, legend, event):
 
 def context_menu(window, event):
     target = hit(window, event)
-    if target is None:
-        return None
+    if target is None or target[0] in ('xlabel', 'ylabel'):
+        return None  # axes open the Format Axis dialog
     kind, index, dataset_id = target
     menu = W.QMenu(window.canvas)
     if kind == 'title':
         _title_actions(window, menu)
-    elif kind in ('xlabel', 'ylabel'):
-        _label_actions(window, menu, kind, index)
     elif kind == 'legend':
         if dataset_id:
             _legend_label_actions(window, menu, _dataset(window, dataset_id))
@@ -101,13 +118,10 @@ def context_menu(window, event):
     elif kind == 'curve':
         _curve_actions(window, menu, _dataset(window, dataset_id), index)
     else:
+        _add(window, menu, 'Format X axis…', lambda: format_axis(window, 'x', index))
+        _add(window, menu, 'Format Y axis…', lambda: format_axis(window, 'y', index))
         _add(window, menu, 'Edit plot title…', lambda: edit_title(window))
-        _add(window, menu, 'Edit X label…', lambda: edit_label(window, 'xlabel', index))
-        _add(window, menu, 'Edit Y label…', lambda: edit_label(window, 'ylabel', index))
-        menu.addSeparator()
         _size_menu(window, menu, 'Title size', 'title_size')
-        _size_menu(window, menu, 'Axis label size', 'label_size')
-        _size_menu(window, menu, 'Tick label size', 'tick_size')
         menu.addSeparator()
         if window.legend_position.currentText() == 'hidden':
             _add(window, menu, 'Show legend', lambda: choose_legend_position(window, 'best'))
@@ -134,15 +148,6 @@ def _title_actions(window, menu):
     _add(window, menu, 'Edit plot title…', lambda: edit_title(window))
     _add(window, menu, 'Clear title', lambda: set_title(window, ''), enabled=bool(window.title.text()))
     _size_menu(window, menu, 'Title size', 'title_size')
-
-
-def _label_actions(window, menu, kind, index):
-    axis = kind[0].upper()
-    _add(window, menu, f'Edit {axis} label…', lambda: edit_label(window, kind, index))
-    _add(window, menu, f'Use automatic {axis} label', lambda: set_label(window, kind, index, ''),
-         enabled=bool(label_text(window, kind, index).strip()))
-    _size_menu(window, menu, 'Axis label size', 'label_size')
-    _size_menu(window, menu, 'Tick label size', 'tick_size')
 
 
 def _legend_label_actions(window, menu, d):
@@ -199,6 +204,11 @@ def _size_menu(window, menu, title, key):
     return sizes
 
 
+def format_axis(window, axis, index):
+    from .axis_format import format_axis  # the dialog builds on the plot workflows, which import this module
+    format_axis(window, axis, index)
+
+
 def _ask(window, title, prompt, text):
     value, ok = W.QInputDialog.getText(dialog_parent(window), title, prompt, text=text)
     return value if ok else None
@@ -213,30 +223,6 @@ def edit_title(window):
 def set_title(window, text):
     window.title.setText(text)
     window.labels_changed()
-
-
-def label_text(window, kind, index):
-    if kind == 'xlabel':
-        return window.xlabel.text()
-    return window.ylabel.text() if index == window.active_panel else window.panels[index].get('ylabel', '')
-
-
-def edit_label(window, kind, index):
-    axis = kind[0].upper()
-    text = _ask(window, f'{axis} label', f'{axis} label (leave empty for the automatic label):',
-                label_text(window, kind, index))
-    if text is not None:
-        set_label(window, kind, index, text)
-
-
-def set_label(window, kind, index, text):
-    if kind == 'xlabel' or index == window.active_panel:
-        getattr(window, kind).setText(text)
-        window.labels_changed()
-    else:
-        window.panels[index]['ylabel'] = text
-        window.changed()
-        window.redraw()
 
 
 def edit_legend_label(window, d):

@@ -7,6 +7,8 @@ communicate with the window through their signals and data arguments.
 from copy import copy, deepcopy
 import numpy as np
 from PySide6 import QtCore as C, QtWidgets as W
+from matplotlib.ticker import (AutoMinorLocator, FuncFormatter, MultipleLocator, NullLocator,
+                               ScalarFormatter, StrMethodFormatter)
 from matplotlib.transforms import Bbox
 from matplotlib.backend_bases import MouseButton
 from matplotlib.widgets import SpanSelector, Cursor, RectangleSelector
@@ -20,6 +22,8 @@ from .plot_context import DraggableLegend
 
 # Above this many plotted points, legend placement "best" falls back to a fixed corner.
 BEST_LEGEND_POINTS = 100_000
+# A fixed tick spacing that would draw more ticks than this falls back to automatic ticks.
+MAX_FIXED_TICKS = 200
 
 
 def panel_datasets(self, panel):
@@ -389,7 +393,7 @@ def cursor_motion(self, event):
 def limits_changed(self, axis, axes):
     if self.drawing:
         return
-    limits = list(axes.get_xlim() if axis == 'x' else axes.get_ylim())
+    limits = sorted(axes.get_xlim() if axis == 'x' else axes.get_ylim())  # inversion is part of the style
     panel_index = next((i for i, pair in enumerate(self.panel_axes) if axes in pair), self.active_panel)
     state = self.panels[panel_index]['view'][axis]
     if axis == 'x' and self.sync_x:
@@ -472,7 +476,7 @@ def draw_plot(self):
     if self.sync_x:
         limits = self.ax.get_xlim()
         for panel, pair in zip(self.panels, self.panel_axes):
-            panel['view']['x']['limits'] = list(limits)
+            panel['view']['x']['limits'] = sorted(limits)
             pair[0].set_xlim(limits)
     notices = []
     if self.panel_log_notices:
@@ -503,7 +507,7 @@ def draw_panel(self, panel_index):
     self.ax.set_subplotspec(self.fit_plot_spec if fitting else self.full_plot_spec)
     self.ax.tick_params(labelbottom=not fitting)
     _draw_datasets(self, panel_index, plotted_datasets, fitting)
-    _draw_labels(self, panel_index, plotted_datasets, active, fitting)
+    _draw_labels(self, panel_index, active, fitting)
     _apply_plot_axes(self)
     _build_interaction(self, active)
 
@@ -553,17 +557,80 @@ def _draw_datasets(self, panel_index, plotted_datasets, fitting):
         for notice in notices)
 
 
-def _draw_labels(self, panel_index, plotted_datasets, active, fitting):
+def automatic_labels(self, panel_index):
+    """Automatic X and Y labels of a panel, and the units of its visible curves on each axis."""
+    visible = [d for d in self.panel_datasets(self.panels[panel_index]) if d.visible]
+    x_units = [column_unit(d, d.xcol) for d in visible]
+    y_units = [column_unit(d, d.ycol) for d in visible]
+    x_label = ', '.join(dict.fromkeys(column_label(d, d.xcol) for d in visible)) or 'X'
+    y_label = ', '.join(dict.fromkeys(column_label(d, d.ycol) for d in visible)) or 'Y'
+    return x_label, y_label, x_units, y_units
+
+
+def axis_label_text(self, axis, text, automatic, units):
+    """What an axis shows: the automatic label, or typed text with the unit added when that is on."""
+    if not text.strip():
+        return automatic
+    return custom_label(text, units) if self.plot_style[axis + '_axis']['unit'] else text.strip()
+
+
+def apply_axis_style(axis, style):
+    """Font, size and color of one Matplotlib axis's label and tick labels."""
+    label = axis.label
+    if style['label_size']:
+        label.set_fontsize(style['label_size'])
+    if style['family']:
+        label.set_family(style['family'])
+    label.set_weight('bold' if style['bold'] else 'normal')
+    label.set_style('italic' if style['italic'] else 'normal')
+    ticks = dict(direction=style['tick_direction'])
+    if style['tick_length'] is not None:
+        axis.set_tick_params(which='major', length=style['tick_length'])
+        axis.set_tick_params(which='minor', length=style['tick_length'] * .6)
+    if style['tick_size']:
+        ticks['labelsize'] = style['tick_size']
+    if style['family']:
+        ticks['labelfontfamily'] = style['family']
+    if style['color']:
+        label.set_color(style['color'])
+        ticks['colors'] = style['color']
+    axis.set_tick_params(which='both', **ticks)
+
+
+def apply_tick_values(axis, style, scale):
+    """Major tick spacing, number format and minor ticks, once the axis has its scale and limits."""
+    log = scale == 'log'
+    low, high = sorted(axis.get_view_interval())
+    step = style['tick_step']
+    if step and not log and (high - low) / step <= MAX_FIXED_TICKS:
+        axis.set_major_locator(MultipleLocator(step))
+    number_format = style['number_format']
+    if number_format == 'fixed':
+        axis.set_major_formatter(StrMethodFormatter(f"{{x:.{style['decimals']}f}}"))
+    elif number_format == 'plain':
+        if log:
+            axis.set_major_formatter(FuncFormatter(lambda value, position: f'{value:.12g}'))
+        else:
+            formatter = ScalarFormatter(useOffset=False)
+            formatter.set_scientific(False)
+            axis.set_major_formatter(formatter)
+    elif number_format == 'scientific' and not log:  # log axes already label powers of ten
+        formatter = ScalarFormatter(useMathText=True)
+        formatter.set_powerlimits((0, 0))
+        axis.set_major_formatter(formatter)
+    if style['minor_ticks'] == 'on' and not log:  # log axes show minor ticks already
+        axis.set_minor_locator(AutoMinorLocator())
+    elif style['minor_ticks'] == 'off':
+        axis.set_minor_locator(NullLocator())
+
+
+def _draw_labels(self, panel_index, active, fitting):
     panel_title = self.title.text()
     if len(self.panels) > 1:
         panel_title = f"Panel {panel_index + 1}" + (' (active)' if active else '') + (f' — {panel_title}' if panel_title else '')
     style = self.plot_style
     self.ax.set_title(panel_title, **({'fontsize': style['title_size']} if style['title_size'] else {}))
-    visible = [d for d in plotted_datasets if d.visible]
-    x_units = [column_unit(d, d.xcol) for d in visible]
-    y_units = [column_unit(d, d.ycol) for d in visible]
-    x_label = ', '.join(dict.fromkeys(column_label(d, d.xcol) for d in visible)) or 'X'
-    y_label = ', '.join(dict.fromkeys(column_label(d, d.ycol) for d in visible)) or 'Y'
+    x_label, y_label, x_units, y_units = automatic_labels(self, panel_index)
     for axis, units in (('X', x_units), ('Y', y_units)):
         if len(set(units)) > 1:
             self.panel_unit_notices.append((f'Panel {panel_index + 1} ' if len(self.panels) > 1 else '')
@@ -571,17 +638,14 @@ def _draw_labels(self, panel_index, plotted_datasets, active, fitting):
     self.xlabel.setPlaceholderText(x_label)
     self.ylabel.setPlaceholderText(y_label)
     y_text = self.panels[panel_index].get('ylabel', self.ylabel.text() if len(self.panels) == 1 else '')
-    self.ax.set_ylabel(custom_label(y_text, y_units) if y_text.strip() else y_label)
-    self.resax.set_xlabel(custom_label(self.xlabel.text(), x_units) if self.xlabel.text().strip() else x_label)
+    self.ax.set_ylabel(axis_label_text(self, 'y', y_text, y_label, y_units))
+    self.resax.set_xlabel(axis_label_text(self, 'x', self.xlabel.text(), x_label, x_units))
     self.ax.set_xlabel("" if fitting else self.resax.get_xlabel())
     self.resax.set_ylabel("Residual")
     self.resax.axhline(0, color='gray', linewidth=0.8)
     for axes in (self.ax, self.resax):
-        if style['label_size']:
-            axes.xaxis.label.set_fontsize(style['label_size'])
-            axes.yaxis.label.set_fontsize(style['label_size'])
-        if style['tick_size']:
-            axes.tick_params(labelsize=style['tick_size'])
+        apply_axis_style(axes.xaxis, style['x_axis'])
+        apply_axis_style(axes.yaxis, style['y_axis'])
 
 
 def _apply_plot_axes(self):
@@ -606,10 +670,18 @@ def _apply_plot_axes(self):
                 axes.autoscale_view(scalex=coordinate == 'x', scaley=coordinate == 'y')
         elif state['limits'] is not None:
             getattr(axes, 'set_' + coordinate + 'lim')(state['limits'])
-        state['limits'] = list(getattr(axes, 'get_' + coordinate + 'lim')())
+        state['limits'] = sorted(getattr(axes, 'get_' + coordinate + 'lim')())
     style = self.plot_style
+    for axis in ('x', 'y'):
+        axis_style = style[axis + '_axis']
+        # The residual panel shares X; its Y holds residuals, so it keeps automatic ticks.
+        for target in (self.ax.xaxis, self.resax.xaxis) if axis == 'x' else (self.ax.yaxis,):
+            apply_tick_values(target, axis_style, self.view[axis]['scale'])
+        getattr(self.ax, axis + 'axis').set_inverted(axis_style['invert'])
+        for axes in (self.ax, self.resax):
+            target = getattr(axes, axis + 'axis')
+            target.grid(True, alpha=0.2) if axis_style['grid'] else target.grid(False)
     for axes in (self.ax, self.resax):
-        axes.grid(True, alpha=0.2)
         if axes.get_legend_handles_labels()[0] and self.legend_position.currentText() != 'hidden':
             loc = self.legend_position.currentText()
             # 'best' scans every plotted point on each draw (~0.5 s for a 1M-point scan).

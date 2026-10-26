@@ -14,7 +14,7 @@ from .scanfile import consolidate_legacy
 from .grouping import path_label
 from .navigation import export_figure
 from .operations import dialog_parent
-from .plotting import PLOT_STYLE
+from .plotting import full_plot_style
 from . import plot_windows
 from .command_bar import CommandBar
 from .files import (DATA_SUFFIXES, SCAN_SUFFIXES, is_project, natural_key, resolved, read_data_file,
@@ -411,7 +411,7 @@ def restore_view(self, name):
 
 
 def restore_plot_style(self, settings):
-    self.plot_style = {**PLOT_STYLE, **settings.get('plot_style', {})}
+    self.plot_style = full_plot_style(settings.get('plot_style'))
     self.legend_labels = dict(settings.get('legend_labels', {}))
 
 
@@ -419,7 +419,7 @@ def settings(self):
     settings = dict(title=self.title.text(), xlabel=self.xlabel.text(), ylabel=self.ylabel.text(),
                     selected_dataset_id=self.current().id if self.current() else None,
                     legend=self.legend_position.currentText(), cursor=self.cursor_enabled.isChecked(),
-                    show_fitting=self.show_fitting.isChecked(), plot_style=dict(self.plot_style),
+                    show_fitting=self.show_fitting.isChecked(), plot_style=deepcopy(self.plot_style),
                     legend_labels=dict(self.legend_labels))
     for axis, state in self.view.items():
         settings.update({axis + 'scale': state['scale'], axis + 'auto': state['auto'],

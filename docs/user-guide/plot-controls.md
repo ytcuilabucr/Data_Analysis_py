@@ -32,14 +32,26 @@ Enable **View → Show plot controls** for advanced presentation options; the de
 Right-click a part of the line plot to change it in place. On macOS, Control-click works too. Menus do not open while the toolbar's zoom or pan tool is active, because those tools use the right button.
 
 - **Title**: **Edit plot title…**, **Clear title**, and **Title size**.
-- **X or Y axis label**: **Edit … label…**, **Use automatic … label**, **Axis label size**, and **Tick label size**. Editing a Y label changes only the panel you clicked; the X label is shared by all panels.
+- **X or Y axis label, or its tick labels**: opens the [Format Axis](#format-axis) window for that axis instead of a menu.
 - **Legend**: **Position**, **Reset dragged position**, **Font size**, **Columns**, **Frame**, and **Hide legend**. Right-clicking an entry also offers **Legend label for …**, which renames the curve in the legend only; the dataset keeps its name. Empty text or **Reset legend label** goes back to the dataset name.
 - **Curve**: legend label, **Color…**, **Automatic color**, **Marker**, and **Remove from plot**, for the curve you clicked, which need not be the highlighted dataset.
-- **Empty plot area**: the title and label editors, all font sizes, and the legend submenu, or **Show legend** when it is hidden.
+- **Empty plot area**: **Format X axis…**, **Format Y axis…**, **Edit plot title…**, **Title size**, and the legend submenu, or **Show legend** when it is hidden.
 
 **Drag the legend** with the left mouse button to move it anywhere in its panel. The position is kept for that panel. Choosing a position (from the menu or the **Legend** control) or **Reset dragged position** puts it back at a fixed location. The legend cannot be dragged while zoom, pan, drag-to-fit, or statistics drag selection is active.
 
-JSON and HDF5 projects retain scales, automatic/manual modes, limits (including residual Y zoom), colors, markers, legend position (including dragged positions), legend font size, columns, frame and custom entry labels, title, axis-label and tick font sizes, cursor toggle, and fitting visibility. View changes trigger unsaved-change prompts; moving the cursor does not. Older projects default to linear scales and automatic styles; saved legacy limits restore as manual views. Pending axis entries are not saved until applied. Opening the controls panel itself is temporary.
+JSON and HDF5 projects retain scales, automatic/manual modes, limits (including residual Y zoom), colors, markers, legend position (including dragged positions), legend font size, columns, frame and custom entry labels, title, each axis's font, color, unit, tick, grid and inversion settings, cursor toggle, and fitting visibility. View changes trigger unsaved-change prompts; moving the cursor does not. Older projects default to linear scales and automatic styles; saved legacy limits restore as manual views. Pending axis entries are not saved until applied. Opening the controls panel itself is temporary.
+
+## Format Axis
+
+Right-click or double-click an axis label or its tick labels, or choose **Format X axis…** or **Format Y axis…** from the empty plot area's menu, to edit that axis in one window. Editing a Y label changes only the panel you clicked; the X label is shared by all panels. Changes show on the plot as you make them. **OK** keeps them as one step that **Undo** reverses; **Cancel** puts the axis back as it was.
+
+- **Label**: the label text. Leave it empty, or click **Automatic**, for the automatic label, shown in grey. **Append the axis unit** adds the unit, such as ` (nA)`, when every curve on the axis has the same unit; a label that already ends in `)` or `]` is left as typed. Uncheck it to show the text exactly. Write math between dollar signs, for example `$\mu$m`, `I$_{tip}$` or `10$^{-3}$`. Text that cannot be drawn, such as unbalanced braces inside `$…$`, is reported and OK stays disabled.
+- **Font**: font family, label size, tick label size, bold and italic label, and color. Font and color apply to the tick labels too. **Default font** returns to Matplotlib's defaults.
+- **Ticks**: direction (outside, inside or both sides), length, minor ticks (**Automatic** shows none on linear scales and Matplotlib's usual ones on log scales), number format (automatic, plain, scientific with a ×10ⁿ multiplier, or a fixed number of decimals), a fixed major tick spacing such as every 0.5, and grid lines. Fixed spacing applies to linear scales only; a spacing that would draw more than 200 ticks in the current range falls back to automatic ticks. **Default ticks** returns to the defaults.
+- **Scale & range**: linear or log scale, automatic limits, or a manual minimum and maximum, with the same rules as **Apply axes**. **Invert axis** makes values decrease to the right (X) or upward (Y). Minimum and maximum are still entered smallest first.
+- **Use this font, ticks and grid for the other axis too**, below the tabs, copies this axis's look to the other axis in the same undo step. The other axis keeps its own label, unit setting, tick spacing and inversion.
+
+The X label and each axis's font, tick, grid and inversion settings apply to every panel. The Y label and the range belong to the panel you opened the window from; with **Synchronize X limits** on, the X range applies to every panel. Axis styles are saved in projects and saved views. Projects saved before this window existed keep their label and tick sizes on both axes.
 
 ## Named saved views
 

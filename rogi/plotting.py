@@ -1,4 +1,5 @@
 """Plot presentation validation and non-destructive logarithmic masking."""
+from copy import deepcopy
 import numpy as np
 from matplotlib.colors import is_color_like
 
@@ -7,9 +8,22 @@ MARKERS = {'Auto': '', 'None': 'None', 'Circle': 'o', 'Square': 's',
 LEGENDS = ('best', 'upper right', 'upper left', 'lower left', 'lower right',
            'center left', 'center right', 'lower center', 'upper center', 'center', 'hidden')
 FONT_SIZES = (6, 7, 8, 9, 10, 11, 12, 14, 16, 18, 20, 24)
-# None keeps Matplotlib's default size for that text.
-PLOT_STYLE = dict(title_size=None, label_size=None, tick_size=None,
-                  legend_size=8, legend_columns=1, legend_frame=True)
+# None keeps Matplotlib's default size for that text; '' keeps its default family or color.
+# family and color apply to the axis label and its tick labels; unit appends the
+# axis unit to a typed label. tick_step is a fixed major tick spacing on linear
+# axes (None: automatic); invert and grid apply to the axis in every panel.
+AXIS_STYLE = dict(label_size=None, tick_size=None, family='', color='', bold=False, italic=False, unit=True,
+                  tick_direction='out', tick_length=None, minor_ticks='auto', number_format='auto',
+                  decimals=2, tick_step=None, grid=True, invert=False)
+TICK_DIRECTIONS = {'Outside': 'out', 'Inside': 'in', 'Both sides': 'inout'}
+MINOR_TICKS = {'Automatic': 'auto', 'On': 'on', 'Off': 'off'}
+NUMBER_FORMATS = {'Automatic': 'auto', 'Plain': 'plain', 'Scientific': 'scientific', 'Fixed decimals': 'fixed'}
+# Settings that describe one axis's values rather than its look stay with that axis.
+AXIS_OWN_KEYS = ('unit', 'tick_step', 'invert')
+PLOT_STYLE = dict(title_size=None, legend_size=8, legend_columns=1, legend_frame=True,
+                  x_axis=AXIS_STYLE, y_axis=AXIS_STYLE)
+# Projects saved before per-axis styles stored one label and tick size for both axes.
+LEGACY_AXIS_KEYS = ('label_size', 'tick_size')
 
 
 def validate_appearance(color, marker):
@@ -46,18 +60,72 @@ def validate_view(settings):
             raise ValueError("Invalid plot toggle.")
 
 
+def full_plot_style(saved=None):
+    """A complete, independent style: defaults, then legacy shared sizes, then saved per-axis values."""
+    saved = dict(saved or {})
+    legacy = {key: saved.pop(key) for key in LEGACY_AXIS_KEYS if key in saved}
+    style = {**deepcopy(PLOT_STYLE), **{k: v for k, v in saved.items() if not k.endswith('_axis')}}
+    for key in ('x_axis', 'y_axis'):
+        style[key] = {**AXIS_STYLE, **legacy, **saved.get(key, {})}
+    return style
+
+
+def _validate_size(size):
+    if size is not None and (type(size) not in (int, float) or not 4 <= size <= 72):
+        raise ValueError("Invalid plot font size.")
+
+
+def validate_axis_style(style):
+    if not isinstance(style, dict) or set(style) - set(AXIS_STYLE):
+        raise ValueError("Invalid axis style.")
+    for key in ('label_size', 'tick_size'):
+        _validate_size(style.get(key))
+    if not isinstance(style.get('family', ''), str):
+        raise ValueError("Invalid axis font.")
+    color = style.get('color', '')
+    if not isinstance(color, str) or (color and not is_color_like(color)):
+        raise ValueError("Invalid axis color.")
+    if not all(isinstance(style.get(key, True), bool) for key in ('bold', 'italic', 'unit', 'grid', 'invert')):
+        raise ValueError("Invalid axis style setting.")
+    if (style.get('tick_direction', 'out') not in TICK_DIRECTIONS.values()
+            or style.get('minor_ticks', 'auto') not in MINOR_TICKS.values()
+            or style.get('number_format', 'auto') not in NUMBER_FORMATS.values()):
+        raise ValueError("Invalid axis tick setting.")
+    length = style.get('tick_length')
+    if length is not None and (type(length) not in (int, float) or not 0 <= length <= 30):
+        raise ValueError("Tick length must be between 0 and 30 points.")
+    decimals = style.get('decimals', 2)
+    if type(decimals) is not int or not 0 <= decimals <= 12:
+        raise ValueError("Decimals must be a whole number from 0 to 12.")
+    step = style.get('tick_step')
+    if step is not None and (type(step) not in (int, float) or not np.isfinite(step) or step <= 0):
+        raise ValueError("Tick spacing must be a positive number.")
+
+
 def validate_plot_style(style):
-    if not isinstance(style, dict) or set(style) - set(PLOT_STYLE):
+    if not isinstance(style, dict) or set(style) - set(PLOT_STYLE) - set(LEGACY_AXIS_KEYS):
         raise ValueError("Invalid plot style.")
-    for key in ('title_size', 'label_size', 'tick_size', 'legend_size'):
-        size = style.get(key, PLOT_STYLE[key])
-        if size is not None and (type(size) not in (int, float) or not 4 <= size <= 72):
-            raise ValueError("Invalid plot font size.")
+    for key in ('title_size', 'legend_size') + LEGACY_AXIS_KEYS:
+        _validate_size(style.get(key))
+    for key in ('x_axis', 'y_axis'):
+        validate_axis_style(style.get(key, AXIS_STYLE))
     columns = style.get('legend_columns', 1)
     if type(columns) is not int or not 1 <= columns <= 6:
         raise ValueError("Invalid legend column count.")
     if not isinstance(style.get('legend_frame', True), bool):
         raise ValueError("Invalid legend frame setting.")
+
+
+def check_label(text):
+    """Raise ValueError when Matplotlib cannot draw the text, such as unbalanced $…$ math."""
+    from matplotlib.backends.backend_agg import FigureCanvasAgg
+    from matplotlib.figure import Figure
+    figure = Figure()
+    figure.text(0, 0, text)
+    try:
+        FigureCanvasAgg(figure).draw()
+    except Exception as error:
+        raise ValueError(f"Cannot draw this label: {str(error).splitlines()[-1].strip() or error}") from None
 
 
 def display_values(x, y, xscale, yscale):

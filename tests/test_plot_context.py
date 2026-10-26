@@ -64,21 +64,13 @@ def test_hit_testing_finds_each_element(window):
     assert plot_context.hit(window, event) == ('curve', 0, window.datasets[0].id)
 
 
-def test_title_and_label_menus_edit_the_plot(window, monkeypatch):
-    replies = iter([('New title', True), ('Voltage', True)])
-    monkeypatch.setattr(W.QInputDialog, 'getText', lambda *a, **k: next(replies))
+def test_title_menu_edits_the_plot(window, monkeypatch):
+    monkeypatch.setattr(W.QInputDialog, 'getText', lambda *a, **k: ('New title', True))
     menu_for(window, window.ax.title)['Edit plot title…'].trigger()
     assert window.title.text() == 'New title'
     assert window.ax.get_title() == 'New title'
-    menu_for(window, window.ax.yaxis.label)['Edit Y label…'].trigger()
-    assert window.panels[0]['ylabel'] == 'Voltage'
-    assert window.ax.get_ylabel().startswith('Voltage')
-    menu_for(window, window.ax.yaxis.label)['Use automatic Y label'].trigger()
-    assert window.ylabel.text() == ''
     menu_for(window, window.ax.title)['Title size/18 pt'].trigger()
     assert window.ax.title.get_fontsize() == 18
-    menu_for(window, window.ax.xaxis.label)['Axis label size/14 pt'].trigger()
-    assert window.ax.xaxis.label.get_fontsize() == 14
 
 
 def test_legend_menu_controls_and_entry_label(window, monkeypatch):

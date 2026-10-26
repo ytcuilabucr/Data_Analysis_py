@@ -38,7 +38,7 @@ from .scanfile import bundle_channels, consolidate_legacy
 from .images import ImageViewer
 from .metadata import attach_spectrum_metadata, metadata_fields, metadata_search_text, acquisition_timestamp, channel_count
 from .clipboard import MIME, selection_rectangle, copy_table, parse_paste
-from .plotting import MARKERS, LEGENDS, PLOT_STYLE, validate_view, display_values
+from .plotting import MARKERS, LEGENDS, full_plot_style, validate_view, display_values
 from .core import Dataset, parse_text, spectrum_table, fit_dataset, export_data, export_fit, remove_datasets
 from .core import region_statistics
 from .project import save_project, load_project, convert_folder
@@ -115,7 +115,7 @@ class MainWindow(W.QMainWindow):
         self.preferences = project_preferences()
         self.saved_views = {}
         self.pipeline_presets = {}
-        self.plot_style = dict(PLOT_STYLE)
+        self.plot_style = full_plot_style()
         self.legend_labels = {}
         self.curve_artists = {}
         self.dirty = False

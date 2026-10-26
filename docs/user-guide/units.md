@@ -17,7 +17,7 @@ Spellings are standardized: `um` becomes `µm`, and `ohm` becomes `Ω`. Column n
 All plots use the label format `Name (unit)`.
 
 - The main plot's default labels come from the visible channels.
-- A custom X or Y label keeps the axis unit unless the text you type already ends in `)` or `]`.
+- A custom X or Y label keeps the axis unit unless the text you type already ends in `)` or `]`, or **Append the axis unit** is unchecked in the [Format Axis](plot-controls.md#format-axis) window.
 - When curves on one axis have different units, the plot controls show a notice. Values are never converted silently.
 - Analysis previews show missing units as `(unknown unit)`.
 
