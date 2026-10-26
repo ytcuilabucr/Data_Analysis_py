@@ -117,6 +117,10 @@ class MainWindow(W.QMainWindow):
         self.pipeline_presets = {}
         self.plot_style = full_plot_style()
         self.legend_labels = {}
+        self.legend_order = []  # dataset ids, first in the legend first
+        self.legend_hidden = []
+        self.legend_entries = {}
+        self.legend_ids = {}
         self.curve_artists = {}
         self.dirty = False
         self.external_dirty = False

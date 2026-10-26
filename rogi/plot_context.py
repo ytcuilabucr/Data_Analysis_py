@@ -3,14 +3,14 @@
 Each element (title, axis labels, legend, legend entries, curves, the axes
 background) opens a menu with the controls that apply to it. An axis label or
 its tick labels opens the Format Axis dialog instead, on a right-click or a
-double-click. Edits go through
+double-click, and a right-click on the legend opens the Format Legend dialog. Edits go through
 the same window state as the plot controls panel, so both stay in agreement.
 """
 from PySide6 import QtGui as G, QtWidgets as W
 from matplotlib.backend_bases import MouseButton
 from matplotlib.legend import DraggableLegend as MatplotlibDraggableLegend
 from .operations import dialog_parent
-from .plotting import FONT_SIZES, LEGENDS, MARKERS, PLOT_STYLE
+from .plotting import FONT_SIZES, MARKERS, PLOT_STYLE
 
 
 class DraggableLegend(MatplotlibDraggableLegend):
@@ -48,6 +48,9 @@ def canvas_pressed(window, event):
     target = hit(window, event)
     if target is not None and target[0] in ('xlabel', 'ylabel'):
         window.guard(lambda: format_axis(window, target[0][0], target[1]))
+    elif target is not None and target[0] == 'legend':
+        if right:  # the left button drags the legend
+            window.guard(lambda: format_legend(window, target[1], target[2]))
     elif right:
         menu = context_menu(window, event)
         if menu is not None:
@@ -94,39 +97,28 @@ def on_tick_labels(window, axes, axis, event):
 
 
 def legend_entry(window, ax, legend, event):
-    artists = window.curve_artists.get(ax, {})
-    handles = ax.get_legend_handles_labels()[0]
-    for text, handle, artist in zip(legend.texts, legend.legend_handles, handles):
+    for text, handle, dataset_id in zip(legend.texts, legend.legend_handles, window.legend_ids.get(ax, [])):
         if text.contains(event)[0] or (handle is not None and handle.contains(event)[0]):
-            return artists.get(artist)
+            return dataset_id
     return None
 
 
 def context_menu(window, event):
     target = hit(window, event)
-    if target is None or target[0] in ('xlabel', 'ylabel'):
-        return None  # axes open the Format Axis dialog
+    if target is None or target[0] in ('xlabel', 'ylabel', 'legend'):
+        return None  # these open the Format Axis and Format Legend dialogs
     kind, index, dataset_id = target
     menu = W.QMenu(window.canvas)
     if kind == 'title':
         _title_actions(window, menu)
-    elif kind == 'legend':
-        if dataset_id:
-            _legend_label_actions(window, menu, _dataset(window, dataset_id))
-            menu.addSeparator()
-        _legend_actions(window, menu, index)
     elif kind == 'curve':
         _curve_actions(window, menu, _dataset(window, dataset_id), index)
     else:
         _add(window, menu, 'Format X axis…', lambda: format_axis(window, 'x', index))
         _add(window, menu, 'Format Y axis…', lambda: format_axis(window, 'y', index))
+        _add(window, menu, 'Format legend…', lambda: format_legend(window, index))
         _add(window, menu, 'Edit plot title…', lambda: edit_title(window))
         _size_menu(window, menu, 'Title size', 'title_size')
-        menu.addSeparator()
-        if window.legend_position.currentText() == 'hidden':
-            _add(window, menu, 'Show legend', lambda: choose_legend_position(window, 'best'))
-        else:
-            _legend_actions(window, menu.addMenu('Legend'), index)
     return menu
 
 
@@ -156,32 +148,12 @@ def _legend_label_actions(window, menu, d):
          enabled=d.id in window.legend_labels)
 
 
-def _legend_actions(window, menu, index):
-    anchor = window.panels[index].get('legend_anchor')
-    current = window.legend_position.currentText()
-    positions = menu.addMenu('Position')
-    group = G.QActionGroup(positions)
-    for loc in LEGENDS[:-1]:
-        group.addAction(_add(window, positions, loc, lambda loc=loc: choose_legend_position(window, loc),
-                             checked=anchor is None and loc == current))
-    _add(window, menu, 'Reset dragged position', lambda: reset_anchor(window, index), enabled=anchor is not None)
-    _size_menu(window, menu, 'Font size', 'legend_size')
-    columns = menu.addMenu('Columns')
-    group = G.QActionGroup(columns)
-    for count in range(1, 5):
-        group.addAction(_add(window, columns, str(count), lambda count=count: set_style(window, 'legend_columns', count),
-                             checked=window.plot_style['legend_columns'] == count))
-    _add(window, menu, 'Frame', lambda: set_style(window, 'legend_frame', not window.plot_style['legend_frame']),
-         checked=window.plot_style['legend_frame'])
-    menu.addSeparator()
-    _add(window, menu, 'Hide legend', lambda: choose_legend_position(window, 'hidden'))
-
-
 def _curve_actions(window, menu, d, index):
     header = menu.addAction(d.name)
     header.setEnabled(False)
     menu.addSeparator()
     _legend_label_actions(window, menu, d)
+    _add(window, menu, 'Format legend…', lambda: format_legend(window, index, d.id))
     menu.addSeparator()
     _add(window, menu, 'Color…', lambda: choose_curve_color(window, d))
     _add(window, menu, 'Automatic color', lambda: set_curve(window, d, 'color', ''), enabled=bool(d.color))
@@ -207,6 +179,11 @@ def _size_menu(window, menu, title, key):
 def format_axis(window, axis, index):
     from .axis_format import format_axis  # the dialog builds on the plot workflows, which import this module
     format_axis(window, axis, index)
+
+
+def format_legend(window, index, dataset_id=None):
+    from .legend_format import format_legend
+    format_legend(window, index, dataset_id)
 
 
 def _ask(window, title, prompt, text):
@@ -252,19 +229,6 @@ def set_style(window, key, value):
 def clear_anchors(window):
     for panel in window.panels:
         panel.pop('legend_anchor', None)
-
-
-def reset_anchor(window, index):
-    window.panels[index].pop('legend_anchor', None)
-    window.changed()
-    window.redraw()
-
-
-def choose_legend_position(window, loc):
-    if window.legend_position.currentText() != loc:
-        window.legend_position.setCurrentText(loc)  # legend_position_changed clears anchors and redraws
-    else:
-        legend_position_changed(window)
 
 
 def choose_curve_color(window, d):

@@ -73,28 +73,6 @@ def test_title_menu_edits_the_plot(window, monkeypatch):
     assert window.ax.title.get_fontsize() == 18
 
 
-def test_legend_menu_controls_and_entry_label(window, monkeypatch):
-    monkeypatch.setattr(W.QInputDialog, 'getText', lambda *a, **k: ('Sample B', True))
-    menu = menu_for(window, window.ax.get_legend().texts[1])
-    menu['Legend label for Run B…'].trigger()
-    assert window.ax.get_legend_handles_labels()[1] == ['Run A', 'Sample B']
-    assert window.datasets[1].name == 'Run B'
-    legend = window.ax.get_legend()
-    menu_for(window, legend)['Columns/2'].trigger()
-    menu_for(window, window.ax.get_legend())['Font size/12 pt'].trigger()
-    menu_for(window, window.ax.get_legend())['Frame'].trigger()
-    legend = window.ax.get_legend()
-    assert legend._ncols == 2 and legend.texts[0].get_fontsize() == 12 and not legend.get_frame_on()
-    menu_for(window, legend)['Position/lower left'].trigger()
-    assert window.legend_position.currentText() == 'lower left'
-    menu_for(window, window.ax.get_legend())['Hide legend'].trigger()
-    assert window.ax.get_legend() is None
-    x, y = window.ax.transAxes.transform((.98, .02))
-    background = MouseEvent('button_press_event', window.canvas, x, y, button=MouseButton.RIGHT)
-    actions(plot_context.context_menu(window, background))['Show legend'].trigger()
-    assert window.ax.get_legend() is not None
-
-
 def test_curve_menu_sets_appearance_of_that_curve(window):
     other = window.datasets[0] if window.current() is not window.datasets[0] else window.datasets[1]
     line = next(artist for artist, i in window.curve_artists[window.ax].items() if i == other.id)

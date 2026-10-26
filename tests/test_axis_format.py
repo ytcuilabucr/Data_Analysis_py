@@ -4,6 +4,7 @@ os.environ.setdefault('MPLCONFIGDIR', '/tmp/rogi-matplotlib-tests')
 
 import numpy as np
 import pytest
+from PySide6 import QtWidgets as W
 from matplotlib.backend_bases import MouseButton, MouseEvent
 from rogi import plot_context
 from rogi.axis_format import FormatAxisDialog
@@ -42,7 +43,7 @@ def test_preview_then_ok_is_one_undo_step(window):
     d.label_size.setCurrentIndex(d.label_size.findData(16))
     d.tick_size.setCurrentIndex(d.tick_size.findData(7))
     d.bold.setChecked(True)
-    d.set_color('#aa0000')
+    d.color.set_color('#aa0000')
     d.auto.setChecked(False)
     d.low.setText('0')
     d.high.setText('20')
@@ -186,7 +187,7 @@ def test_right_click_or_double_click_on_an_axis_opens_the_dialog(window, monkeyp
 def test_automatic_button_clears_the_label(window):
     d = dialog(window)
     d.text.setText('Custom')
-    next(b for b in d.findChildren(type(d.color_button)) if b.text() == 'Automatic' and b is not d.color_button).click()
+    next(b for b in d.findChildren(W.QPushButton) if b.text() == 'Automatic' and b is not d.color.button).click()
     assert d.text.text() == ''
     d.reject()
 

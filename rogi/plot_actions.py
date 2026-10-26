@@ -466,6 +466,8 @@ def draw_plot(self):
         for panel in self.panels:
             panel['view']['x'] = deepcopy(active_view['x'])
     self.curve_artists = {}
+    self.legend_entries = {}
+    self.legend_ids = {}
     for i in [j for j in range(len(self.panels)) if j != self.active_panel] + [self.active_panel]:
         self.ax, self.resax = self.panel_axes[i]
         self.view = self.panels[i]['view']
@@ -519,6 +521,9 @@ def _draw_datasets(self, panel_index, plotted_datasets, fitting):
     color_indices = {d.id: i for i, d in enumerate(self.datasets)}
     # Right-click menus map artists back to their dataset.
     self.curve_artists[self.ax] = artists = {}
+    # (dataset id, kind, artist, text) for the legends, drawn later in legend order.
+    self.legend_entries[self.ax] = entries = []
+    self.legend_entries[self.resax] = residual_entries = []
     for d in plotted_datasets:
         if not d.visible:
             continue
@@ -530,9 +535,10 @@ def _draw_datasets(self, panel_index, plotted_datasets, fitting):
         if excluded:
             notices.append(f"{d.name}: {excluded} data row(s)")
         if d.style == 'Scatter':
-            self.ax.scatter(x, y, s=14, label=name, color=color, marker=d.marker or 'o')
+            curve = self.ax.scatter(x, y, s=14, label=name, color=color, marker=d.marker or 'o')
         else:
-            self.ax.plot(x, y, label=name, color=color, marker=d.marker or 'None')
+            curve, = self.ax.plot(x, y, label=name, color=color, marker=d.marker or 'None')
+        entries.append((d.id, 'curve', curve, name))
         if (d.analysis and d.analysis.get('version') == 2 and d.analysis.get('operation') == 'mean'
                 and (d.xcol, d.ycol) == (0, 1)):
             sd = d.values[:, 2]
@@ -540,7 +546,8 @@ def _draw_datasets(self, panel_index, plotted_datasets, fitting):
             if self.view['y']['scale'] == 'log':
                 lower = np.where(lower > 0, lower, np.nan)
                 upper = np.where(upper > 0, upper, np.nan)
-            self.ax.fill_between(x, lower, upper, color=color, alpha=.2, label=name + ' ±1 sample SD (not SEM)')
+            band = self.ax.fill_between(x, lower, upper, color=color, alpha=.2, label=name + ' ±1 sample SD (not SEM)')
+            entries.append((d.id, 'sd', band, band.get_label()))
         if fitting and d.fit and (d.fit['xcol'], d.fit['ycol']) == (d.xcol, d.ycol):
             fit = d.fit
             order = np.argsort(fit['x'])
@@ -548,9 +555,11 @@ def _draw_datasets(self, panel_index, plotted_datasets, fitting):
                                            self.view['x']['scale'], self.view['y']['scale'])
             if count:
                 notices.append(f"{d.name}: {count} fit point(s)")
-            self.ax.plot(fx, fy, '--', label=name + ' fit', color=color)
+            fit_line, = self.ax.plot(fx, fy, '--', label=name + ' fit', color=color)
+            entries.append((d.id, 'fit', fit_line, fit_line.get_label()))
             rx, ry, _ = display_values(fit['x'], fit['residuals'], self.view['x']['scale'], 'linear')
-            self.resax.scatter(rx, ry, s=10, label=name, color=color)
+            residuals = self.resax.scatter(rx, ry, s=10, label=name, color=color)
+            residual_entries.append((d.id, 'curve', residuals, name))
         artists.update({artist: d.id for artist in self.ax.lines[drawn[0]:] + self.ax.collections[drawn[1]:]})
     self.panel_log_notices.extend(
         (f'Panel {panel_index + 1}: ' if len(self.panels) > 1 else '') + notice
@@ -682,21 +691,66 @@ def _apply_plot_axes(self):
             target = getattr(axes, axis + 'axis')
             target.grid(True, alpha=0.2) if axis_style['grid'] else target.grid(False)
     for axes in (self.ax, self.resax):
-        if axes.get_legend_handles_labels()[0] and self.legend_position.currentText() != 'hidden':
-            loc = self.legend_position.currentText()
-            # 'best' scans every plotted point on each draw (~0.5 s for a 1M-point scan).
-            if loc == 'best' and sum(len(line.get_xdata()) for line in axes.get_lines()) > BEST_LEGEND_POINTS:
-                loc = 'upper right'
-            anchor = self.panels[self.panel_index].get('legend_anchor') if axes is self.ax else None
-            legend = axes.legend(fontsize=style['legend_size'], loc=tuple(anchor) if anchor else loc,
-                                 ncols=style['legend_columns'], frameon=style['legend_frame'])
-            if axes is self.ax:
-                DraggableLegend(self, legend, self.panel_index)
+        _draw_legend(self, axes)
     # Interactive artists must not participate in automatic data limits.
     # Automatic ranges are recomputed explicitly on the next redraw.
     for axes in (self.ax, self.resax):
         axes.set_autoscalex_on(False)
         axes.set_autoscaley_on(False)
+
+
+def legend_items(self, axes):
+    """(dataset id, kind, artist, text) shown in this axes's legend, in legend order."""
+    style = self.plot_style
+    shown = {'curve': True, 'fit': style['legend_fit_entries'], 'sd': style['legend_sd_entries']}
+    hidden = set(self.legend_hidden)
+    rank = {dataset_id: n for n, dataset_id in enumerate(self.legend_order)}
+    # Stable: unordered datasets follow in dataset order, and a fit stays after its curve.
+    return sorted((entry for entry in self.legend_entries.get(axes, []) if entry[0] not in hidden and shown[entry[1]]),
+                  key=lambda entry: rank.get(entry[0], len(rank)))
+
+
+def _draw_legend(self, axes):
+    style = self.plot_style
+    position = self.legend_position.currentText()
+    residual = axes is self.resax
+    items = legend_items(self, axes)
+    self.legend_ids[axes] = []
+    if not items or position == 'hidden' or (residual and not style['legend_residuals']):
+        return
+    options = dict(fontsize=style['legend_size'], ncols=style['legend_columns'], frameon=style['legend_frame'],
+                   title=style['legend_title'] or None, title_fontsize=style['legend_size'],
+                   framealpha=style['legend_alpha'], fancybox=style['legend_rounded'],
+                   markerscale=style['legend_marker_scale'], labelspacing=style['legend_spacing'])
+    for key, option in (('legend_color', 'labelcolor'), ('legend_frame_color', 'edgecolor'),
+                        ('legend_background', 'facecolor')):
+        if style[key]:
+            options[option] = style[key]
+    anchor = None if residual else self.panels[self.panel_index].get('legend_anchor')
+    if anchor:
+        options['loc'] = tuple(anchor)
+    elif position == 'outside right':
+        options.update(loc='upper left', bbox_to_anchor=(1.02, 1), borderaxespad=0)
+    elif position == 'outside top' and not residual:
+        options.update(loc='lower center', bbox_to_anchor=(.5, 1.02), borderaxespad=0)
+    else:
+        # The residual panel sits under the main plot, so its legend stays inside.
+        loc = 'upper right' if position == 'outside top' else position
+        # 'best' scans every plotted point on each draw (~0.5 s for a 1M-point scan).
+        if loc == 'best' and sum(len(line.get_xdata()) for line in axes.get_lines()) > BEST_LEGEND_POINTS:
+            loc = 'upper right'
+        options['loc'] = loc
+    legend = axes.legend([entry[2] for entry in items], [entry[3] for entry in items], **options)
+    if style['legend_color']:
+        legend.get_title().set_color(style['legend_color'])
+    self.legend_ids[axes] = [entry[0] for entry in items]
+    if residual:
+        return
+    DraggableLegend(self, legend, self.panel_index)
+    if 'bbox_to_anchor' in options and position == 'outside top' and axes.get_title():
+        # Lift the title above a legend that sits on top of the plot.
+        height = legend.get_window_extent(self.canvas.get_renderer()).height * 72 / self.figure.dpi
+        axes.set_title(axes.get_title(), pad=height + 10, fontsize=axes.title.get_fontsize())
 
 
 def _build_interaction(self, active):

@@ -1,5 +1,8 @@
 """Format Axis dialog: label text, font, ticks and range of one line-plot axis.
 
+Also the shared pieces of the plot formatting dialogs: live preview with one undo
+step on OK, and a color choice.
+
 Edits preview on the plot as they are made. OK records them as one undo step;
 Cancel puts the axis back as it was. The X label and both axis styles are shared
 by all panels; the Y label and the ranges belong to one panel, except that a
@@ -78,6 +81,105 @@ def choice_box(choices, current):
     return box
 
 
+class ColorChoice(W.QWidget):
+    """A color button with Reset; '' means Matplotlib's automatic color."""
+    changed = C.Signal()
+
+    def __init__(self, color, title, parent=None):
+        super().__init__(parent)
+        self.color, self.title = color, title
+        self.button = W.QPushButton()
+        self.button.clicked.connect(self.choose)
+        reset = W.QPushButton("Reset")
+        reset.clicked.connect(lambda: self.set_color(''))
+        layout = W.QHBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(self.button)
+        layout.addWidget(reset)
+        self.show_color()
+
+    def choose(self):
+        color = W.QColorDialog.getColor(G.QColor(self.color or 'black'), self, self.title)
+        if color.isValid():
+            self.set_color(color.name())
+
+    def set_color(self, color):
+        self.color = color
+        self.show_color()
+        self.changed.emit()
+
+    def show_color(self):
+        self.button.setText(self.color or "Automatic")
+        self.button.setStyleSheet(f"color: {self.color};" if self.color else "")
+
+
+class PreviewDialog(W.QDialog):
+    """Applies edits to the plot as they are made; OK keeps them as one undo step, Cancel restores.
+
+    Subclasses build their fields, set self.window, self.before (the captured
+    state) and self.undo_label, call finish_layout() and watch(), and implement
+    read() (the edited state, or ValueError) and apply(state).
+    """
+
+    def finish_layout(self, layout):
+        self.status = W.QLabel()
+        self.status.setWordWrap(True)
+        layout.addWidget(self.status)
+        self.buttons = W.QDialogButtonBox(W.QDialogButtonBox.StandardButton.Ok | W.QDialogButtonBox.StandardButton.Cancel)
+        self.buttons.accepted.connect(self.accept)
+        self.buttons.rejected.connect(self.reject)
+        layout.addWidget(self.buttons)
+        self.applied = self.before
+        self.timer = C.QTimer(self, singleShot=True, interval=PREVIEW_DELAY_MS)
+        self.timer.timeout.connect(self.preview)
+
+    def watch(self, *widgets):
+        """Preview after any of these widgets changes."""
+        for widget in widgets:
+            for name in ('textChanged', 'currentIndexChanged', 'valueChanged', 'toggled', 'changed', 'itemChanged'):
+                if hasattr(widget, name):
+                    getattr(widget, name).connect(self.timer.start)
+                    break
+
+    def preview(self):
+        try:
+            state = self.read()
+        except ValueError as error:
+            self.status.setText(str(error))
+            self.buttons.button(W.QDialogButtonBox.StandardButton.Ok).setEnabled(False)
+            return None
+        self.status.clear()
+        self.buttons.button(W.QDialogButtonBox.StandardButton.Ok).setEnabled(True)
+        if state != self.applied:
+            self.apply(state)
+            self.applied = state
+        return state
+
+    def accept(self):
+        self.timer.stop()
+        after = self.preview()
+        if after is None:
+            return
+        if after == self.before:
+            self.restore()
+        else:
+            before = self.before
+            # Pushing runs the command once, which applies the edited state again.
+            self.window.history.push(ChangeCommand(self.window, self.undo_label,
+                                                   lambda: self.apply(after), lambda: self.apply(before)))
+        super().accept()
+
+    def reject(self):
+        self.timer.stop()
+        self.restore()
+        super().reject()
+
+    def restore(self):
+        if self.applied is not self.before:
+            self.apply(self.before)
+            self.applied = self.before
+
+
 def row(*widgets):
     widget = W.QWidget()
     layout = W.QHBoxLayout(widget)
@@ -87,14 +189,15 @@ def row(*widgets):
     return widget
 
 
-class FormatAxisDialog(W.QDialog):
+class FormatAxisDialog(PreviewDialog):
     def __init__(self, window, axis, index, parent=None):
         super().__init__(parent)
         self.window, self.axis, self.index = window, axis, index
         name = axis.upper()
+        self.undo_label = f"Format {name} axis"
         several = len(window.panels) > 1
         self.setWindowTitle(f"Format {name} axis" + (f" — panel {index + 1}" if several and axis == 'y' else ''))
-        self.before = self.applied = capture(window, axis, index)
+        self.before = capture(window, axis, index)
         x_label, y_label, x_units, y_units = automatic_labels(window, index)
         self.automatic, self.units = (x_label, x_units) if axis == 'x' else (y_label, y_units)
         style = self.before['style']
@@ -148,12 +251,8 @@ class FormatAxisDialog(W.QDialog):
         self.italic.setChecked(style['italic'])
         form.addRow(self.bold)
         form.addRow(self.italic)
-        self.color = style['color']
-        self.color_button = W.QPushButton()
-        self.color_button.clicked.connect(self.choose_color)
-        automatic_color = W.QPushButton("Reset")
-        automatic_color.clicked.connect(lambda: self.set_color(''))
-        form.addRow("Color", row(self.color_button, automatic_color))
+        self.color = ColorChoice(style['color'], f"{name} axis color")
+        form.addRow("Color", self.color)
         defaults = W.QPushButton("Default font")
         defaults.clicked.connect(self.default_font)
         form.addRow(defaults)
@@ -229,27 +328,12 @@ class FormatAxisDialog(W.QDialog):
         self.copy_style = W.QCheckBox(f"Use this font, ticks and grid for the {other} axis too")
         self.copy_style.setToolTip(f"The {other} axis keeps its own label, unit setting, tick spacing and inversion.")
         layout.addWidget(self.copy_style)
-        self.status = W.QLabel()
-        self.status.setWordWrap(True)
-        layout.addWidget(self.status)
-        self.buttons = W.QDialogButtonBox(W.QDialogButtonBox.StandardButton.Ok | W.QDialogButtonBox.StandardButton.Cancel)
-        self.buttons.accepted.connect(self.accept)
-        self.buttons.rejected.connect(self.reject)
-        layout.addWidget(self.buttons)
-        self.show_color()
+        self.finish_layout(layout)
         self.enable_tick_fields()
-
-        self.timer = C.QTimer(self, singleShot=True, interval=PREVIEW_DELAY_MS)
-        self.timer.timeout.connect(self.preview)
-        for field in (self.text, self.low, self.high, self.step):
-            field.textChanged.connect(self.timer.start)
-        for box in (self.family, self.label_size, self.tick_size, self.scale, self.direction, self.length,
-                    self.minor, self.number_format):
-            box.currentIndexChanged.connect(self.timer.start)
-        self.decimals.valueChanged.connect(self.timer.start)
-        for box in (self.unit, self.bold, self.italic, self.auto, self.fixed_step, self.grid, self.invert,
-                    self.copy_style):
-            box.toggled.connect(self.timer.start)
+        self.watch(self.text, self.low, self.high, self.step, self.family, self.label_size, self.tick_size,
+                   self.scale, self.direction, self.length, self.minor, self.number_format, self.decimals,
+                   self.unit, self.bold, self.italic, self.auto, self.fixed_step, self.grid, self.invert,
+                   self.copy_style, self.color)
         for widget in (self.number_format, self.scale):
             widget.currentIndexChanged.connect(self.enable_tick_fields)
         self.fixed_step.toggled.connect(self.enable_tick_fields)
@@ -260,26 +344,12 @@ class FormatAxisDialog(W.QDialog):
         self.fixed_step.setEnabled(linear)
         self.step.setEnabled(linear and self.fixed_step.isChecked())
 
-    def choose_color(self):
-        color = W.QColorDialog.getColor(G.QColor(self.color or 'black'), self, f"{self.axis.upper()} axis color")
-        if color.isValid():
-            self.set_color(color.name())
-
-    def set_color(self, color):
-        self.color = color
-        self.show_color()
-        self.timer.start()
-
-    def show_color(self):
-        self.color_button.setText(self.color or "Automatic")
-        self.color_button.setStyleSheet(f"color: {self.color};" if self.color else "")
-
     def default_font(self):
         for box, key in ((self.family, 'family'), (self.label_size, 'label_size'), (self.tick_size, 'tick_size')):
             box.setCurrentIndex(box.findData(AXIS_STYLE[key]))
         self.bold.setChecked(AXIS_STYLE['bold'])
         self.italic.setChecked(AXIS_STYLE['italic'])
-        self.set_color(AXIS_STYLE['color'])
+        self.color.set_color(AXIS_STYLE['color'])
 
     def default_ticks(self):
         for box, key in ((self.direction, 'tick_direction'), (self.length, 'tick_length'),
@@ -303,7 +373,7 @@ class FormatAxisDialog(W.QDialog):
         if text.strip():
             check_label(text)
         style = dict(label_size=self.label_size.currentData(), tick_size=self.tick_size.currentData(),
-                     family=self.family.currentData(), color=self.color, bold=self.bold.isChecked(),
+                     family=self.family.currentData(), color=self.color.color, bold=self.bold.isChecked(),
                      italic=self.italic.isChecked(), unit=self.unit.isChecked(),
                      tick_direction=self.direction.currentData(), tick_length=self.length.currentData(),
                      minor_ticks=self.minor.currentData(), number_format=self.number_format.currentData(),
@@ -326,44 +396,8 @@ class FormatAxisDialog(W.QDialog):
                  for i, before in self.before['views'].items()}
         return dict(text=text, style=style, other=other, views=views)
 
-    def preview(self):
-        try:
-            state = self.read()
-        except ValueError as error:
-            self.status.setText(str(error))
-            self.buttons.button(W.QDialogButtonBox.StandardButton.Ok).setEnabled(False)
-            return None
-        self.status.clear()
-        self.buttons.button(W.QDialogButtonBox.StandardButton.Ok).setEnabled(True)
-        if state != self.applied:
-            apply_state(self.window, self.axis, self.index, state)
-            self.applied = state
-        return state
-
-    def accept(self):
-        self.timer.stop()
-        after = self.preview()
-        if after is None:
-            return
-        if after == self.before:
-            self.restore()
-        else:
-            window, axis, index, before = self.window, self.axis, self.index, self.before
-            # Pushing runs the command once, which applies the edited state again.
-            window.history.push(ChangeCommand(window, f"Format {axis.upper()} axis",
-                                              lambda: apply_state(window, axis, index, after),
-                                              lambda: apply_state(window, axis, index, before)))
-        super().accept()
-
-    def reject(self):
-        self.timer.stop()
-        self.restore()
-        super().reject()
-
-    def restore(self):
-        if self.applied is not self.before:
-            apply_state(self.window, self.axis, self.index, self.before)
-            self.applied = self.before
+    def apply(self, state):
+        apply_state(self.window, self.axis, self.index, state)
 
 
 def format_axis(window, axis, index):

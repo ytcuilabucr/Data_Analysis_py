@@ -6,7 +6,8 @@ from matplotlib.colors import is_color_like
 MARKERS = {'Auto': '', 'None': 'None', 'Circle': 'o', 'Square': 's',
            'Triangle': '^', 'Diamond': 'D', 'Plus': '+', 'Cross': 'x'}
 LEGENDS = ('best', 'upper right', 'upper left', 'lower left', 'lower right',
-           'center left', 'center right', 'lower center', 'upper center', 'center', 'hidden')
+           'center left', 'center right', 'lower center', 'upper center', 'center',
+           'outside right', 'outside top', 'hidden')
 FONT_SIZES = (6, 7, 8, 9, 10, 11, 12, 14, 16, 18, 20, 24)
 # None keeps Matplotlib's default size for that text; '' keeps its default family or color.
 # family and color apply to the axis label and its tick labels; unit appends the
@@ -20,7 +21,11 @@ MINOR_TICKS = {'Automatic': 'auto', 'On': 'on', 'Off': 'off'}
 NUMBER_FORMATS = {'Automatic': 'auto', 'Plain': 'plain', 'Scientific': 'scientific', 'Fixed decimals': 'fixed'}
 # Settings that describe one axis's values rather than its look stay with that axis.
 AXIS_OWN_KEYS = ('unit', 'tick_step', 'invert')
+# Legend colors '' keep Matplotlib's defaults; alpha is the frame's opacity.
 PLOT_STYLE = dict(title_size=None, legend_size=8, legend_columns=1, legend_frame=True,
+                  legend_title='', legend_color='', legend_frame_color='', legend_background='',
+                  legend_alpha=0.8, legend_rounded=True, legend_marker_scale=1.0, legend_spacing=0.5,
+                  legend_fit_entries=True, legend_sd_entries=True, legend_residuals=True,
                   x_axis=AXIS_STYLE, y_axis=AXIS_STYLE)
 # Projects saved before per-axis styles stored one label and tick size for both axes.
 LEGACY_AXIS_KEYS = ('label_size', 'tick_size')
@@ -55,6 +60,10 @@ def validate_view(settings):
     labels = settings.get('legend_labels', {})
     if not isinstance(labels, dict) or not all(isinstance(k, str) and isinstance(v, str) for k, v in labels.items()):
         raise ValueError("Invalid legend labels.")
+    for key in ('legend_order', 'legend_hidden'):
+        ids = settings.get(key, [])
+        if not isinstance(ids, list) or not all(isinstance(i, str) for i in ids):
+            raise ValueError("Invalid legend entries.")
     for key in ('cursor', 'show_fitting'):
         if key in settings and not isinstance(settings[key], bool):
             raise ValueError("Invalid plot toggle.")
@@ -112,8 +121,19 @@ def validate_plot_style(style):
     columns = style.get('legend_columns', 1)
     if type(columns) is not int or not 1 <= columns <= 6:
         raise ValueError("Invalid legend column count.")
-    if not isinstance(style.get('legend_frame', True), bool):
-        raise ValueError("Invalid legend frame setting.")
+    if not all(isinstance(style.get(key, True), bool) for key in
+               ('legend_frame', 'legend_rounded', 'legend_fit_entries', 'legend_sd_entries', 'legend_residuals')):
+        raise ValueError("Invalid legend setting.")
+    if not isinstance(style.get('legend_title', ''), str):
+        raise ValueError("Invalid legend title.")
+    for key in ('legend_color', 'legend_frame_color', 'legend_background'):
+        color = style.get(key, '')
+        if not isinstance(color, str) or (color and not is_color_like(color)):
+            raise ValueError("Invalid legend color.")
+    for key, low, high in (('legend_alpha', 0, 1), ('legend_marker_scale', .25, 4), ('legend_spacing', 0, 3)):
+        value = style.get(key, PLOT_STYLE[key])
+        if type(value) not in (int, float) or not low <= value <= high:
+            raise ValueError(f"Legend {key.removeprefix('legend_').replace('_', ' ')} must be from {low:g} to {high:g}.")
 
 
 def check_label(text):
