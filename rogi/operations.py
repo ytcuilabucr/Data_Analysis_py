@@ -81,7 +81,7 @@ def coordinator(widget):
 
 
 def dialog_parent(window):
-    """Open dialogs over the plot window when the user is working there, not the file window."""
+    """Open dialogs over the plot or Files window when the user is working there, not the file window."""
     active = W.QApplication.activeWindow()
     return active if active is not None and coordinator(active) is window else window
 
@@ -90,9 +90,10 @@ def set_editing_enabled(window, enabled):
     """Shared by fits and other operations; preserve the fit editing boundary."""
     enabled = enabled and not getattr(window, 'operation_active', False)
     window.centralWidget().setEnabled(enabled)
-    # The plot window is a separate top-level window.
-    if getattr(window, 'plot_window', None) is not None:
-        window.plot_window.centralWidget().setEnabled(enabled)
+    # The plot and Files windows are separate top-level windows.
+    for child in ('plot_window', 'files_window'):
+        if getattr(window, child, None) is not None:
+            getattr(window, child).centralWidget().setEnabled(enabled)
     window.edit_menu.setEnabled(enabled)
     window.file_menu.setEnabled(enabled)
     # View actions can also mutate plot state during a worker operation.

@@ -3,7 +3,7 @@ import numpy as np
 import pytest
 from PySide6 import QtCore as C, QtWidgets as W
 from rogi.files import (natural_key, scan_folder, format_name, sort_by_x, read_data_file,
-                        read_with_template, loaded_sources, folder_group, file_summary)
+                        read_with_template, loaded_sources, folder_group, file_preview)
 from rogi.files_panel import FilesPanel, PATH_ROLE
 from rogi.dialogs import ImportDialog
 from rogi.project import save_project
@@ -71,8 +71,12 @@ def test_helpers_for_loaded_marks_groups_and_preview(tmp_path):
     assert loaded_sources([dataset]) == {str(path.resolve())}
     assert folder_group(path, tmp_path) == 'sub'
     assert folder_group(tmp_path / 'b.dat', tmp_path) == ''
-    summary = file_summary(path)
-    assert 'a.dat' in summary and 'x\ty\tz' in summary
+    summary, image = file_preview(path)
+    assert 'a.dat' in summary and 'x\ty\tz' in summary and image is None
+    assert 'Tab-separated table · 2 rows' in summary and 'Channels: x, y, z' in summary
+    bad = tmp_path / 'bad.csv'
+    bad.write_text('')
+    assert 'Cannot be loaded' in file_preview(bad)[0]
 
 
 def test_panel_lists_marks_and_detects_new_files(tmp_path, app):
@@ -81,13 +85,13 @@ def test_panel_lists_marks_and_detects_new_files(tmp_path, app):
     requests = []
     panel.load_requested.connect(lambda paths, options: requests.append((paths, options)))
     panel.set_folder(str(tmp_path))
-    assert panel.list.count() == 1
+    assert len(panel.file_items()) == 1
     loaded = str((tmp_path / 'run_1.dat').resolve())
     panel.set_loaded({loaded})
     panel.hide_loaded.setChecked(True)
-    assert panel.list.item(0).isHidden()
+    assert panel.file_items()[0].isHidden()
     panel.hide_loaded.setChecked(False)
-    panel.auto_load.setChecked(True)
+    panel.watch.setChecked(True)
     new = sweep(tmp_path / 'run_2.dat')
     panel.refresh()
     assert str(new.resolve()) in panel.new and not requests  # waits until the size settles
@@ -97,6 +101,50 @@ def test_panel_lists_marks_and_detects_new_files(tmp_path, app):
     panel.deleteLater()
 
 
+
+def test_panel_layout_types_subfolders_sorting_and_options(tmp_path, app):
+    from test_nanonis import scan_bytes
+    sweep(tmp_path / 'run_10.dat')
+    sweep(tmp_path / 'run_2.dat', '1\t2\n3\t4\n5\t6\n')
+    sweep(tmp_path / 'day2' / 'run_1.dat')
+    (tmp_path / 'scan.sxm').write_bytes(scan_bytes())
+    panel = FilesPanel()
+    panel.set_folder(str(tmp_path))
+    names = lambda: [item.text(0) for item in panel.file_items() if not item.isHidden()]
+    assert names() == ['run_2.dat', 'run_10.dat', 'scan.sxm']
+    panel.recursive.setChecked(True)
+    folder = panel.list.topLevelItem(0)
+    assert folder.text(0) == 'day2' and folder.data(0, PATH_ROLE) is None and folder.child(0).text(0) == 'run_1.dat'
+    assert str(tmp_path / 'day2') in panel.watcher.directories()
+    panel.search.setText('day2')
+    assert names() == ['run_1.dat'] and not folder.isHidden()
+    panel.search.clear()
+    panel.list.sortByColumn(2, C.Qt.SortOrder.DescendingOrder)
+    assert names()[0] == 'scan.sxm'
+    panel.kind_actions['sxm'].setChecked(False)
+    assert 'scan.sxm' not in names() and panel.types_button.text() != 'All types'
+    panel.kind_actions['sxm'].setChecked(True)
+    assert panel.types_button.text() == 'All types'
+
+    assert not panel.preview_box.isVisibleTo(panel)
+    item = next(item for item in panel.file_items() if item.text(0) == 'scan.sxm')
+    panel.list.setCurrentItem(item)
+    assert panel.preview_box.isVisibleTo(panel) and panel.thumbnail.isVisibleTo(panel)
+    assert 'Nanonis SXM' in panel.preview.toPlainText()
+    item = next(item for item in panel.file_items() if item.text(0) == 'run_2.dat')
+    panel.list.setCurrentItem(item)
+    assert not panel.thumbnail.isVisibleTo(panel) and '3 rows' in panel.preview.toPlainText()
+
+    assert not panel.options_box.isVisibleTo(panel)
+    assert panel.options_summary.text() == 'Names from files · Group: choose once · all columns'
+    panel.name_pattern.setText('Scan_{n}')
+    panel.grouping.setCurrentIndex(1)
+    panel.sort_x.setChecked(True)
+    assert panel.options_summary.text() == 'Names Scan_{n} from 0 · Group: subfolder names · all columns · sort by X'
+    panel.options_toggle.setChecked(True)
+    assert panel.options_box.isVisibleTo(panel)
+    panel.deleteLater()
+
 def test_load_several_files_is_one_step(window, tmp_path):
     paths = [sweep(tmp_path / f'BGsweep_{i:05}.dat') for i in (10, 9)]
     window.files_panel.set_folder(str(tmp_path))
@@ -105,8 +153,8 @@ def test_load_several_files_is_one_step(window, tmp_path):
     assert [d.name for d in window.datasets] == ['Scan_0', 'Scan_1']
     assert window.datasets[0].source.endswith('BGsweep_00009.dat')
     assert window.files_panel.start_number.value() == 2
-    marked = [window.files_panel.list.item(r) for r in range(window.files_panel.list.count())]
-    assert all(item.data(PATH_ROLE) in window.files_panel.loaded for item in marked)
+    marked = window.files_panel.file_items()
+    assert all(item.data(0, PATH_ROLE) in window.files_panel.loaded for item in marked)
     window.history.undo()
     assert window.datasets == []
     assert not window.files_panel.loaded

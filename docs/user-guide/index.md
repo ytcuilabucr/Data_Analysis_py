@@ -2,7 +2,7 @@
 
 [README](../../README.md) · [Validation and limitations](../limitations.md)
 
-- [Opening files, the Files panel, editing, fitting, and projects](import-and-projects.md)
+- [Opening files, the Files window, editing, fitting, and projects](import-and-projects.md)
 - [Spectrum metadata and timestamps](spectrum-metadata.md)
 - [Keyboard shortcuts and table clipboard](clipboard.md)
 - [Undo and redo](undo.md)

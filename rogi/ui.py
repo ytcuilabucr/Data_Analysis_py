@@ -19,8 +19,6 @@ from .canvas import ResponsiveCanvas as FigureCanvasQTAgg
 from matplotlib.widgets import SpanSelector, Cursor, RectangleSelector
 from .browser_panel import BrowserPanel, BrowserState, BrowserItem, DatasetBrowser, populate_group_tree
 from .plot_controls_panel import PlotControlsPanel
-from .files_panel import FilesPanel
-from .files import loaded_sources
 from .fitting_panel import FittingPanel, FitWorker
 from . import project_actions as project_commands
 from .screen import fit_to_screen
@@ -29,7 +27,7 @@ from . import dataset_actions
 from .table_actions import DataTable
 from . import table_actions
 from . import plot_actions, plot_context
-from . import plot_windows
+from . import plot_windows, files_window
 from .operations import run_operation, set_editing_enabled, Cancelled, dialog_parent, collect_on_main_thread
 from .history import ChangeCommand, CellCommand, CellsCommand
 from .grouping import group_path, path_key, path_label, node_label, partitions, varying_fields, field_labels, import_destinations
@@ -48,7 +46,6 @@ from .project import save_project, load_project, convert_folder
 # without the optional data table it is only as wide as the dataset list.
 FILE_WINDOW_SIZE = (1150, 760)
 COMPACT_FILE_WIDTH = 520
-FILES_PANEL_WIDTH = 400
 
 
 def project_preferences():
@@ -67,7 +64,6 @@ class MainWindow(W.QMainWindow):
         central_layout.addWidget(self.project_toolbar)
         central_layout.addLayout(self._build_file_buttons())
         splitter = W.QSplitter()
-        self._build_files(splitter)
         self._build_browser(splitter)
         self._build_center(splitter)
         layout = self._build_analysis_container(splitter)
@@ -79,16 +75,13 @@ class MainWindow(W.QMainWindow):
         self.analysis_panel.setMinimumWidth(self.analysis_panel.widget().minimumSizeHint().width()
                                             + self.analysis_panel.verticalScrollBar().sizeHint().width()
                                             + 2 * self.analysis_panel.frameWidth())
-        central_layout.addWidget(splitter)
+        # The panels take any spare height; the wrapping command bar keeps its rows.
+        central_layout.addWidget(splitter, 1)
         self._build_connections()
         shown = self.preferences.value('data_table_shown', False, type=bool)
         with C.QSignalBlocker(self.show_table_button):
             self.show_table_button.setChecked(shown)
         self.set_table_shown(shown, remember=False)
-        files_shown = self.preferences.value('files_panel_shown', True, type=bool)
-        with C.QSignalBlocker(self.show_files_button):
-            self.show_files_button.setChecked(files_shown)
-        self.set_files_shown(files_shown, remember=False)
         project_commands.restore_files_folder(self)
         self.setAcceptDrops(True)
 
@@ -145,15 +138,6 @@ class MainWindow(W.QMainWindow):
 
     def _build_menus(self):
         return project_commands._build_menus(self)
-
-    def _build_files(self, splitter):
-        self.files_panel = FilesPanel()
-        self.files_panel.load_requested.connect(self.load_from_panel)
-        self.files_panel.open_project_requested.connect(lambda path: self.guard(lambda: self.open_project(path)))
-        self.files_panel.convert_requested.connect(lambda folder: self.guard(lambda: self.convert_folder(folder)))
-        self.files_panel.folder_changed.connect(lambda folder: project_commands.remember_files_folder(self, folder))
-        self.files_panel.loaded_sources = lambda: loaded_sources(self.datasets)
-        splitter.addWidget(self.files_panel)
 
     def _build_browser(self, splitter):
         self.browser_panel = BrowserPanel(self.browser_state)
@@ -221,11 +205,9 @@ class MainWindow(W.QMainWindow):
     def _build_file_buttons(self):
         row = W.QHBoxLayout()
         row.setContentsMargins(8, 6, 8, 0)
-        self.show_files_button = W.QPushButton("Show files")
-        self.show_files_button.setCheckable(True)
-        self.show_files_button.setToolTip("List a data folder to browse, preview and load its files")
-        self.show_files_button.toggled.connect(self.set_files_shown)
-        row.addWidget(self.show_files_button)
+        self.open_files_button = files_window.open_button()
+        self.open_files_button.clicked.connect(self.open_files_window)
+        row.addWidget(self.open_files_button)
         self.open_plot_button = plot_windows.open_button()
         row.addWidget(self.open_plot_button)
         self.show_table_button = W.QPushButton("Show data table")
@@ -249,7 +231,9 @@ class MainWindow(W.QMainWindow):
         self.line_view.setCollapsible(0, False)
         self.line_view.setSizes([680, 380])
         plot_windows.build(self, self.show_fitting.parent(), self.project_toolbar)
-        splitter.setSizes([FILES_PANEL_WIDTH, 420, 730])
+        files_window.build(self, self.show_fitting.parent())
+        self.files_panel.folder_changed.connect(lambda folder: project_commands.remember_files_folder(self, folder))
+        splitter.setSizes([420, 730])
         return layout
 
     def _build_channels(self, layout):
@@ -439,21 +423,9 @@ class MainWindow(W.QMainWindow):
     def set_table_shown(self, shown, remember=True):
         return table_actions.set_table_shown(self, shown, remember)
 
-    def set_files_shown(self, shown, remember=True):
-        """The Files panel sits left of the dataset list; hidden, the window narrows again."""
-        if remember:
-            self.preferences.setValue('files_panel_shown', shown)
-        self.files_panel.setVisible(shown)
-        self.show_files_button.setText("Hide files" if shown else "Show files")
-        # Recompute the window's minimum width now, or it still includes the hidden panel.
-        self.layout().activate()
-        self.fit_file_window()
-
     def fit_file_window(self):
-        """Size for the dataset list, plus the files panel and data table when shown; height is kept once on screen."""
+        """Size for the dataset list, plus the data table when shown; height is kept once on screen."""
         width = FILE_WINDOW_SIZE[0] if self.table.isVisibleTo(self) else COMPACT_FILE_WIDTH
-        if hasattr(self, 'files_panel') and self.files_panel.isVisibleTo(self):
-            width += FILES_PANEL_WIDTH
         fit_to_screen(self, width, self.height() if self.isVisible() else FILE_WINDOW_SIZE[1])
 
     def update_dirty(self, *args):
@@ -663,6 +635,15 @@ class MainWindow(W.QMainWindow):
     def restore_plot_window(self):
         return plot_windows.restore_state(self)
 
+    def open_files_window(self, folder=None):
+        return files_window.open_files(self, folder)
+
+    def save_files_window(self):
+        return files_window.save_state(self)
+
+    def restore_files_window(self):
+        return files_window.restore_state(self)
+
     def redraw(self):
         return plot_actions.redraw(self)
 
@@ -768,6 +749,7 @@ def main():
     window.show()
     window.fit_file_window()  # actual frame margins are known once shown
     window.restore_plot_window()
+    window.restore_files_window()
     C.QTimer.singleShot(0, window.suggest_recent_project)
     sys.exit(app.exec())
 

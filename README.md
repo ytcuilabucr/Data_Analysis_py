@@ -38,7 +38,7 @@ exact test command are in [VALIDATION.md](VALIDATION.md).
 
 ## Feature overview
 
-- Text, Spectrum DAT, Bruker SPM and Nanonis SXM imports; a Files panel for batch and
+- Text, Spectrum DAT, Bruker SPM and Nanonis SXM imports; a Files window for batch and
   automatic loading from a data folder; folder conversion.
 - Metadata search, grouping, annotations, table clipboard and undo/redo.
 - Line/scatter plots, channel controls, statistics, fitting and saved views.

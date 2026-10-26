@@ -193,24 +193,72 @@ def folder_group(path, folder):
     return '' if relative == Path('.') else relative.as_posix()
 
 
-def file_summary(path, lines=14):
-    """Size, modification time and the readable start of the file for the preview."""
+def size_text(size):
+    return f'{size} B' if size < 1024 else f'{size / 1024:.1f} KB' if size < 1024 ** 2 else f'{size / 1024 ** 2:.1f} MB'
+
+
+def describe_contents(path):
+    """('Spectrum DAT · 41 rows', channel names, image or None) without importing the file.
+
+    The image is the first raster channel of a scan whose values vary, for a thumbnail.
+    """
+    path = Path(path)
+    if path.suffix.lower() in SCAN_SUFFIXES:
+        channels = load_spm(path)
+        first = channels[0]
+        kind = 'Nanonis SXM' if first.instrument_metadata.get('format') == 'nanonis_sxm' else 'Bruker SPM'
+        image = None
+        if first.columns[1:3] == ['X pixel', 'Y pixel']:
+            width = int(first.values[:, 1].max()) + 1
+            def varies(channel):
+                signal = channel.values[:, 3]
+                signal = signal[np.isfinite(signal)]
+                return signal.size and signal.max() > signal.min()
+            shown = next((d for d in channels if varies(d) and len(d.values) == len(first.values)), first)
+            image = shown.values[:, 3].reshape(-1, width)
+            kind += f' · {width}×{len(image)} px'
+        return f'{kind} · {len(channels)} channels', [channel_key(d) for d in channels], image
+    text, table = read_text_import(path)
+    if table is not None:
+        table_text, delimiter, kind = table, '\t', 'Spectrum DAT'
+    else:
+        table_text = text.removeprefix('﻿')
+        try:
+            delimiter = csv.Sniffer().sniff(table_text[:65536], delimiters=',\t;').delimiter
+        except csv.Error:
+            delimiter = ',' if path.suffix.lower() == '.csv' else '\t'
+        kind = {',': 'Comma', '\t': 'Tab', ';': 'Semicolon'}[delimiter] + '-separated table'
+    rows = sum(1 for line in table_text.splitlines()[1:] if line.strip())
+    return f'{kind} · {rows} rows', column_names(table_text, delimiter, True), None
+
+
+def file_preview(path, lines=14, limit=64 * 1024 ** 2):
+    """Preview text and an optional thumbnail image for the highlighted file.
+
+    The text gives size, modification time, detected kind, channels and the
+    readable start of the file. Files above limit bytes are not parsed.
+    """
     path = Path(path)
     try:
         stat = path.stat()
     except OSError as error:
-        return str(error)
-    size = stat.st_size
-    size_text = f'{size} B' if size < 1024 else f'{size / 1024:.1f} KB' if size < 1024 ** 2 else f'{size / 1024 ** 2:.1f} MB'
+        return str(error), None
     modified = datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')
-    head = [f'{path.name}', f'{size_text} · modified {modified}']
+    head = [f'{path.name}', f'{size_text(stat.st_size)} · modified {modified}']
     if is_project(path):
-        return '\n'.join(head + ['Rogi project: double-click or Open to open it.'])
+        return '\n'.join(head + ['Rogi project: double-click or Open to open it.']), None
+    image = None
+    if stat.st_size <= limit:
+        try:
+            kind, channels, image = describe_contents(path)
+            head += [kind, 'Channels: ' + ', '.join(channels)]
+        except (ValueError, OSError, UnicodeError, csv.Error) as error:
+            head.append(f'Cannot be loaded: {error}')
     try:
         with path.open('rb') as stream:
             start = stream.read(8192)
     except OSError as error:
-        return '\n'.join(head + [str(error)])
+        return '\n'.join(head + [str(error)]), image
     text = []
     # Instrument headers are text even in binary scans; stop at the first binary line.
     for raw in start.splitlines()[:lines]:
@@ -218,4 +266,4 @@ def file_summary(path, lines=14):
         if '�' in line or '\x00' in line:
             break
         text.append(line[:160])
-    return '\n'.join(head + [''] + text)
+    return '\n'.join(head + [''] + text), image

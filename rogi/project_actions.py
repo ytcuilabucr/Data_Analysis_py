@@ -127,9 +127,8 @@ def open_files(self, paths=None):
         return
     folders = [p for p in paths if Path(p).is_dir()]
     if folders:
-        # A dropped folder is listed in the Files panel rather than loaded wholesale.
-        self.files_panel.set_folder(folders[-1])
-        self.show_files_button.setChecked(True)
+        # A dropped folder is listed in the Files window rather than loaded wholesale.
+        self.open_files_window(folders[-1])
         paths = [p for p in paths if p not in folders]
         if not paths:
             return
@@ -163,7 +162,8 @@ def import_paths(self, paths, *, preview=False, name_pattern='', start=0, groupi
     imported, skipped, rest = [], [], paths
     if preview:
         first = paths[0]
-        dialog = (SpmImportDialog if Path(first).suffix.lower() in SCAN_SUFFIXES else ImportDialog)(first, self)
+        # Dialogs open over the Files window when loading from there.
+        dialog = (SpmImportDialog if Path(first).suffix.lower() in SCAN_SUFFIXES else ImportDialog)(first, dialog_parent(self))
         if not dialog.exec():
             return []
         imported = [(first, dialog.datasets[0] if isinstance(dialog, SpmImportDialog) else dialog.dataset)]
@@ -198,7 +198,7 @@ def import_paths(self, paths, *, preview=False, name_pattern='', start=0, groupi
         for dataset in datasets:
             set_group_path(dataset, self.last_import_group)
     elif grouping == 'ask' and (self.datasets or self.path):
-        destination = ImportGroupDialog(datasets[0], self.datasets, self.path, self)
+        destination = ImportGroupDialog(datasets[0], self.datasets, self.path, dialog_parent(self))
         if not destination.exec():
             return []
         self.last_import_group = destination.selected_path()
@@ -592,8 +592,10 @@ def closeEvent(self, event):
         event.ignore()
     elif self.confirm_discard():
         self.save_plot_window()
+        self.save_files_window()
         # A child window outlives a hidden parent; without this the application keeps running.
         self.plot_window.hide()
+        self.files_window.hide()
         event.accept()
     else:
         event.ignore()
