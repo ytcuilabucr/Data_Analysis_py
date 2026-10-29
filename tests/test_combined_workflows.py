@@ -165,10 +165,11 @@ def test_all_project_commands_show_on_toolbar(window):
         if action.isVisible():
             assert bar.rect().contains(button.geometry()), action.text()
     assert [a.text() for a in w.analysis_menu.actions()] == [
-        'Analysis pipeline…', 'Apply pipeline preset…', 'Reopen analysis recipe…']
+        'Analysis pipeline…', 'Apply pipeline preset…', 'Reopen analysis recipe…', 'New column from formula…']
     assert w.analysis_menu.menuAction() in w.menuBar().actions()
     assert not w.project_actions['Apply pipeline preset…'].isEnabled()
     assert not w.project_actions['Reopen analysis recipe…'].isEnabled()
+    assert not w.project_actions['New column from formula…'].isEnabled()
     w.add_dataset(Dataset('d', ['x', 'y'], np.array([[0., 1.], [1., 2.], [2., 3.]])))
     w.pipeline_presets = {'p': {}}
     w.pipeline_presets_changed()

@@ -393,6 +393,9 @@ class MainWindow(W.QMainWindow):
     def edit_units(self):
         return dataset_actions.edit_units(self)
 
+    def formula_column(self):
+        return dataset_actions.formula_column(self)
+
     def assign_group(self):
         return dataset_actions.assign_group(self)
 

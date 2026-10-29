@@ -9,6 +9,7 @@
 - [Region statistics](statistics.md)
 - [Plot controls and saved views](plot-controls.md)
 - [Channel units and axis labels](units.md)
+- [Formula columns](formulas.md)
 - [Dataset organization and grouping](grouping.md)
 - [Models and uncertainty assumptions](fitting.md)
 - [Image viewing](images.md)

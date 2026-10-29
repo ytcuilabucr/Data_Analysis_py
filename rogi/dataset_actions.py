@@ -82,6 +82,34 @@ def edit_units(self):
         self.change_attributes([d], 'column_units', dialog.units(), f'Edit units of {d.name}')
 
 
+def formula_column(self):
+    from .dialogs import FormulaDialog
+    from .formulas import add_column, remove_last_column
+    d = self.current()
+    if d is None:
+        raise ValueError("Select one dataset to add a formula column.")
+    dialog = FormulaDialog(d, self)
+    if dialog.exec() != W.QDialog.DialogCode.Accepted:
+        return
+    column = dialog.column
+    if d.raw:
+        copy = d.derived()
+        copy.name = f"{d.name} (+ {column['name']})"
+        add_column(copy, column)
+        self.add_dataset(copy)
+        return
+    def reshown(change):
+        # Column count changed: rebuild the table and channel lists if this dataset is shown.
+        def run():
+            change(d, column)
+            self.history_selection = {d.id}
+            if self.current() is d:
+                self.select(self.browser.currentRow())
+        return run
+    self.history.push(ChangeCommand(self, f"Add column {column['name']} to {d.name}",
+                                    reshown(add_column), reshown(remove_last_column)))
+
+
 def assign_group(self):
     if not self.selected_datasets():
         return

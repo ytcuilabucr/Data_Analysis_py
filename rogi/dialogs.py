@@ -466,3 +466,79 @@ class UnitsDialog(W.QDialog):
                      f"{display_unit(units[i]) or 'unknown'}" for i in changed]
         self.status.setText(problem or '; '.join(notes))
         self.buttons.button(W.QDialogButtonBox.StandardButton.Ok).setEnabled(not problem)
+
+
+class FormulaDialog(W.QDialog):
+    """Name a new column and type the formula that computes it from existing columns."""
+
+    def __init__(self, dataset, parent=None):
+        from .formulas import HELP
+        super().__init__(parent)
+        self.setWindowTitle(f"New column from formula — {dataset.name}")
+        fit_to_screen(self, 640, 520)
+        self.dataset = dataset
+        self.column = None
+        layout = W.QVBoxLayout(self)
+        info = W.QLabel(HELP + (" Raw data stays read-only: the column is added to a new editable copy."
+                                if dataset.raw else " The column is added to this editable dataset."))
+        info.setWordWrap(True)
+        layout.addWidget(info)
+        self.columns = W.QListWidget()
+        self.columns.setToolTip("Double-click a column to insert it into the formula.")
+        for index, name in enumerate(dataset.columns):
+            unit = display_unit(column_unit(dataset, index))
+            item = W.QListWidgetItem(f"c{index + 1}   [{name}]" + (f"   {unit}" if unit else ""))
+            item.setData(C.Qt.ItemDataRole.UserRole, name)
+            self.columns.addItem(item)
+        self.columns.itemDoubleClicked.connect(self.insert_column)
+        layout.addWidget(self.columns)
+        form = W.QFormLayout()
+        self.formula = W.QLineEdit()
+        self.formula.setPlaceholderText("for example [Current (A)] * [Bias (V)] or c2 / max(c2)")
+        self.name = W.QLineEdit()
+        self.name.setPlaceholderText("for example Power (W)")
+        self.unit = W.QLineEdit()
+        self.unit.setPlaceholderText("blank: taken from a trailing (unit) in the name")
+        form.addRow("Formula", self.formula)
+        form.addRow("New column name", self.name)
+        form.addRow("Unit", self.unit)
+        layout.addLayout(form)
+        self.status = W.QLabel()
+        self.status.setWordWrap(True)
+        self.status.setTextInteractionFlags(C.Qt.TextInteractionFlag.TextSelectableByMouse)
+        layout.addWidget(self.status)
+        self.buttons = W.QDialogButtonBox(W.QDialogButtonBox.StandardButton.Ok | W.QDialogButtonBox.StandardButton.Cancel)
+        self.buttons.accepted.connect(self.accept)
+        self.buttons.rejected.connect(self.reject)
+        layout.addWidget(self.buttons)
+        for field in (self.formula, self.name, self.unit):
+            field.textChanged.connect(self.check)
+        self.formula.setFocus()
+        self.check()
+
+    def insert_column(self, item):
+        self.formula.insert(f"[{item.data(C.Qt.ItemDataRole.UserRole)}]")
+        self.formula.setFocus()
+
+    def check(self, *args):
+        from .formulas import formula_column
+        self.column = None
+        try:
+            column = formula_column(self.dataset, self.name.text(), self.formula.text(), self.unit.text())
+        except ValueError as error:
+            self.status.setText(str(error))
+        else:
+            self.column = column
+            values = column['values']
+            shown = ", ".join("missing" if v != v else f"{v:.6g}" for v in values[:5])
+            notes = [f"Rows 1–{min(5, len(values))}: {shown}" + (" …" if len(values) > 5 else "")]
+            missing = int((values != values).sum())
+            if missing:
+                notes.append(f"{missing} of {len(values)} rows missing")
+            if column['invalid']:
+                notes.append(f"{column['invalid']} of them from division by zero, overflow or a value outside "
+                             "a function's domain")
+            if column['unit']:
+                notes.append(f"unit {display_unit(column['unit'])}")
+            self.status.setText("; ".join(notes) + ".")
+        self.buttons.button(W.QDialogButtonBox.StandardButton.Ok).setEnabled(self.column is not None)

@@ -42,6 +42,8 @@ class Dataset:
 
     column_units: list = field(default_factory=list)
     analysis: dict | None = None
+    # How formula columns were computed: column, formula, unit and the revision used.
+    formulas: list = field(default_factory=list)
 
     def __post_init__(self):
         if (type(self.favorite) is not bool or not isinstance(self.tags, list)
@@ -50,6 +52,8 @@ class Dataset:
             raise ValueError("Invalid dataset annotations.")
         from .analysis import validate_analysis
         validate_analysis(self.analysis)
+        from .formulas import validate_formulas
+        validate_formulas(self)
         if (not isinstance(self.column_units, list) or (self.column_units and len(self.column_units) != len(self.columns))
                 or not all(isinstance(unit, str) for unit in self.column_units)):
             raise ValueError("Invalid column units.")
@@ -82,6 +86,7 @@ class Dataset:
                        raw=False, parent=self.id, source=self.source,
                        favorite=self.favorite, tags=self.tags.copy(), comments=self.comments,
                        column_units=self.column_units.copy(), analysis=deepcopy(self.analysis),
+                       formulas=deepcopy(self.formulas),
                        xcol=self.xcol, ycol=self.ycol, style=self.style, group=self.group,
                        color=self.color, marker=self.marker,
                        group_path=deepcopy(self.group_path),

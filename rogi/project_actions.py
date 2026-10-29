@@ -51,6 +51,7 @@ def _build_menus(self):
                             ("Editable copy", self.make_copy), ("Analysis pipeline…", self.analysis_pipeline),
                             ("Apply pipeline preset…", self.apply_pipeline_preset),
                             ("Reopen analysis recipe…", self.reopen_analysis_recipe),
+                            ("New column from formula…", self.formula_column),
                             ("2D spectrum map…", self.spectrum_map),
                             ("Export data…", self.export_data),
                             ("Export fit…", self.export_fit), ("Export plot…", self.export_plot)]:
@@ -74,7 +75,8 @@ def _build_menus(self):
     self.refresh_recent_projects()
 
 
-ANALYSIS_ACTIONS = ("Analysis pipeline…", "Apply pipeline preset…", "Reopen analysis recipe…")
+ANALYSIS_ACTIONS = ("Analysis pipeline…", "Apply pipeline preset…", "Reopen analysis recipe…",
+                    "New column from formula…")
 
 
 def _build_analysis_menu(self):
@@ -83,6 +85,7 @@ def _build_analysis_menu(self):
     actions[0].setToolTip("Create a pipeline for the selected dataset(s)")
     actions[1].setToolTip("Run a saved preset on every selected dataset")
     actions[2].setToolTip("Edit the recipe that produced the selected result")
+    actions[3].setToolTip("Compute a new column from existing columns with a formula you type")
     self.analysis_menu = W.QMenu("Analysis", self)
     self.analysis_menu.setToolTipsVisible(True)
     self.analysis_menu.addActions(actions)
@@ -91,6 +94,7 @@ def _build_analysis_menu(self):
     # No dataset or preset exists yet; later selection, history and preset changes re-enable these.
     actions[1].setEnabled(False)
     actions[2].setEnabled(False)
+    actions[3].setEnabled(False)
 
 
 def update_analysis_actions(self, *args):
@@ -100,6 +104,7 @@ def update_analysis_actions(self, *args):
         bool(self.selected_datasets() and self.pipeline_presets))
     self.project_actions["Reopen analysis recipe…"].setEnabled(
         bool(current and current.analysis and current.analysis.get('version') == 1))
+    self.project_actions["New column from formula…"].setEnabled(current is not None)
 
 
 def update_dirty(self, *args):
