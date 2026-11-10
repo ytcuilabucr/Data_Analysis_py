@@ -14,27 +14,37 @@ from .core import parse_text, parse_dat, spectrum_table
 from .metadata import attach_spectrum_metadata
 from .spm import load_spm
 from .scanfile import bundle_channels
+from .measurement import is_measurement, load_measurement, describe_measurement
 
 # Kind -> suffixes; the Files panel offers one type filter per kind.
+# .h5/.hdf5 files are Rogi projects or measurement files; file_kind tells them apart by content.
 KINDS = {'project': ('.h5', '.hdf5', '.json'),
+         'measurement': ('.h5', '.hdf5'),
          'dat': ('.dat',),
          'table': ('.csv', '.tsv', '.txt'),
          'spm': ('.spm',),
          'sxm': ('.sxm',)}
-KIND_LABELS = {'project': 'Projects', 'dat': 'DAT', 'table': 'CSV/TSV/TXT', 'spm': 'SPM', 'sxm': 'SXM'}
-DATA_SUFFIXES = {s for kind, suffixes in KINDS.items() if kind != 'project' for s in suffixes}
+KIND_LABELS = {'project': 'Projects', 'measurement': 'Measurement HDF5', 'dat': 'DAT', 'table': 'CSV/TSV/TXT', 'spm': 'SPM', 'sxm': 'SXM'}
 PROJECT_SUFFIXES = set(KINDS['project'])
+DATA_SUFFIXES = {s for kind, suffixes in KINDS.items() if kind != 'project' for s in suffixes} - PROJECT_SUFFIXES
 SCAN_SUFFIXES = {'.spm', '.sxm'}
 NAME_TOKENS = ('stem', 'n', 'num', 'folder')
 
 
 def file_kind(path):
     suffix = Path(path).suffix.lower()
+    if suffix in KINDS['measurement'] and is_measurement(path):
+        return 'measurement'
     return next((kind for kind, suffixes in KINDS.items() if suffix in suffixes), None)
 
 
 def is_project(path):
-    return Path(path).suffix.lower() in PROJECT_SUFFIXES
+    return Path(path).suffix.lower() in PROJECT_SUFFIXES and not is_measurement(path)
+
+
+def is_data_file(path):
+    """A file Rogi loads into a project: tables, DAT, scans and measurement HDF5."""
+    return file_kind(path) not in (None, 'project')
 
 
 def natural_key(text):
@@ -58,6 +68,8 @@ def scan_folder(folder, kinds=None, recursive=False):
         subdirectories[:] = [d for d in subdirectories if not d.startswith('.')] if recursive else []
         found += [Path(directory) / name for name in names
                   if not name.startswith('.') and Path(name).suffix.lower() in suffixes]
+    # HDF5 files are listed under whichever kind their content is.
+    found = [path for path in found if path.suffix.lower() not in PROJECT_SUFFIXES or file_kind(path) in kinds]
     return sorted(found, key=lambda path: natural_key(path.relative_to(folder).as_posix()))
 
 
@@ -89,9 +101,16 @@ def parse_text_import(path, text, table_text, delimiter, header, selected):
     return dataset
 
 
+def read_datasets(path):
+    """Every dataset in one data file: several for a measurement with outer sweeps, else one."""
+    return load_measurement(path) if is_measurement(path) else [read_data_file(path)]
+
+
 def read_data_file(path):
     """Read one file with every channel and an automatically detected delimiter."""
     path = Path(path)
+    if is_measurement(path):
+        raise ValueError('A measurement HDF5 file can hold several datasets; use read_datasets.')
     if path.suffix.lower() in SCAN_SUFFIXES:
         return bundle_channels(load_spm(path), name=path.stem)
     text = path.read_bytes().decode('utf-8')
@@ -203,6 +222,9 @@ def describe_contents(path):
     The image is the first raster channel of a scan whose values vary, for a thumbnail.
     """
     path = Path(path)
+    if is_measurement(path):
+        kind, channels = describe_measurement(path)
+        return kind, channels, None
     if path.suffix.lower() in SCAN_SUFFIXES:
         channels = load_spm(path)
         first = channels[0]

@@ -8,7 +8,7 @@ import tempfile
 import numpy as np
 import h5py
 from .core import Dataset, MODELS
-from .files import DATA_SUFFIXES, read_data_file, folder_group
+from .files import is_data_file, read_datasets, folder_group
 from .hdf5 import save_hdf5, load_hdf5
 from .metadata import validate_metadata
 from .plotting import validate_view, validate_appearance
@@ -32,20 +32,21 @@ def convert_folder(folder, destination, *, cancel_check=None, before_save=None):
         raise error
     paths = sorted(Path(directory) / name
                    for directory, _, names in os.walk(folder, onerror=scan_error, followlinks=False)
-                   for name in names if Path(name).suffix.lower() in DATA_SUFFIXES)
+                   for name in names if is_data_file(Path(directory) / name))
     if not paths:
-        raise ValueError('No CSV, TSV, TXT, DAT, SPM, or SXM files found in the selected folder or its subfolders.')
+        raise ValueError('No CSV, TSV, TXT, DAT, SPM, SXM or measurement HDF5 files found in the selected folder or its subfolders.')
     datasets = []
     for path in paths:
         if cancel_check:
             cancel_check()
         try:
-            dataset = read_data_file(path)
+            read = read_datasets(path)
         except (ValueError, OSError, UnicodeError, csv.Error) as error:
             raise ValueError(f'{path.relative_to(folder).as_posix()}: {error}') from error
-        dataset.group = folder_group(path, folder)
-        dataset.visible = not datasets
-        datasets.append(dataset)
+        for dataset in read:
+            dataset.group = folder_group(path, folder)
+            dataset.visible = not datasets
+            datasets.append(dataset)
     if cancel_check:
         cancel_check()
     if before_save:

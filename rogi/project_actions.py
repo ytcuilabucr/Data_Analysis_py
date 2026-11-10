@@ -17,8 +17,9 @@ from .operations import dialog_parent
 from .plotting import full_plot_style
 from . import plot_windows
 from .command_bar import CommandBar
-from .files import (DATA_SUFFIXES, SCAN_SUFFIXES, is_project, natural_key, resolved, read_data_file,
+from .files import (SCAN_SUFFIXES, is_project, is_data_file, natural_key, resolved, read_datasets,
                     read_with_template, format_name, sort_by_x, folder_group)
+from .measurement import is_measurement
 
 
 def _build_menus(self):
@@ -120,7 +121,7 @@ def changed(self):
 
 OPEN_FILTER = ("Projects and data (*.h5 *.hdf5 *.json *.csv *.tsv *.txt *.dat *.spm *.sxm);;"
                "Rogi projects (*.h5 *.hdf5 *.json);;"
-               "Data files (*.csv *.tsv *.txt *.dat *.spm *.sxm);;All files (*)")
+               "Data files (*.csv *.tsv *.txt *.dat *.spm *.sxm *.h5 *.hdf5);;All files (*)")
 
 
 def open_files(self, paths=None):
@@ -142,7 +143,7 @@ def open_files(self, paths=None):
         if len(paths) > 1:
             raise ValueError("Open one project at a time, or choose only data files to load.")
         return self.open_project(projects[0])
-    unsupported = [Path(p).name for p in paths if Path(p).suffix.lower() not in DATA_SUFFIXES]
+    unsupported = [Path(p).name for p in paths if not is_data_file(p)]
     if unsupported:
         raise ValueError(f"Unsupported file type: {', '.join(unsupported)}")
     if not self.files_panel.folder:
@@ -165,17 +166,19 @@ def import_paths(self, paths, *, preview=False, name_pattern='', start=0, groupi
     if not paths:
         return []
     imported, skipped, rest = [], [], paths
-    if preview:
-        first = paths[0]
+    # Measurement HDF5 files load every channel; only other files have columns to choose.
+    choosable = [p for p in paths if not is_measurement(p)]
+    if preview and choosable:
+        first = choosable[0]
         # Dialogs open over the Files window when loading from there.
         dialog = (SpmImportDialog if Path(first).suffix.lower() in SCAN_SUFFIXES else ImportDialog)(first, dialog_parent(self))
         if not dialog.exec():
             return []
         imported = [(first, dialog.datasets[0] if isinstance(dialog, SpmImportDialog) else dialog.dataset)]
-        template, rest = dialog.template(), paths[1:]
-        read = lambda path: read_with_template(path, template)
+        template, rest = dialog.template(), [p for p in paths if p != first]
+        read = lambda path: read_datasets(path) if is_measurement(path) else [read_with_template(path, template)]
     else:
-        read = read_data_file
+        read = read_datasets
     if rest:
         def work(check, commit):
             results = []
@@ -187,12 +190,14 @@ def import_paths(self, paths, *, preview=False, name_pattern='', start=0, groupi
                     results.append((path, None, str(error)))
             return results
         results = self.run_operation(f"Loading {len(rest)} file(s)", work, cancellable=True, cooperative=True)
-        imported += [(path, dataset) for path, dataset, error in results if dataset is not None]
-        skipped = [f"{Path(path).name}: {error}" for path, dataset, error in results if error]
+        imported += [(path, dataset) for path, read_sets, error in results if read_sets for dataset in read_sets]
+        skipped = [f"{Path(path).name}: {error}" for path, read_sets, error in results if error]
     if not imported:
         raise ValueError("No files were loaded.\n" + "\n".join(skipped))
     for number, (path, dataset) in enumerate(imported, start=start):
-        dataset.name = format_name(name_pattern, path, number)
+        # A measurement's outer setpoints follow the file name: 'scan, power = 10'.
+        setpoints = dataset.name[len(Path(path).stem):] if is_measurement(path) else ''
+        dataset.name = format_name(name_pattern, path, number) + setpoints
         if sort_x:
             sort_by_x(dataset)
     datasets = [dataset for _, dataset in imported]
