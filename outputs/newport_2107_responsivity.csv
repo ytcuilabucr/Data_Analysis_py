@@ -1,0 +1,20 @@
+# Newport 2107 (Si) responsivity, digitized from the datasheet plot (2026-10-22).
+# Marker centres located automatically; axis calibrated on the 400/1600 nm and 0.2/1.0 A/W gridlines.
+# Digitization uncertainty about +/-0.005 A/W. Valid range 300-1050 nm; do not extrapolate.
+wavelength (nm),responsivity (A/W)
+300,0.100
+350,0.180
+400,0.240
+450,0.279
+500,0.314
+550,0.350
+600,0.379
+650,0.404
+700,0.429
+750,0.460
+800,0.478
+850,0.508
+900,0.524
+950,0.508
+1000,0.409
+1050,0.119
